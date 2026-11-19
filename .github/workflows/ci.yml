@@ -22,7 +22,8 @@ jobs:
         run: |
           types='feat|fix|docs|test|refactor|perf|ci|chore'
           ok=true
-          if ! [[ "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9-]*$ ]]; then
+          # Dependabot names its own branches (dependabot/...); its titles still use "ci:".
+          if ! [[ "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9-]*$ || "$BRANCH" == dependabot/* ]]; then
             echo "::error::Branch '$BRANCH' must look like <type>/<short-kebab-description>, type in: ${types//|/, }"
             ok=false
           fi
