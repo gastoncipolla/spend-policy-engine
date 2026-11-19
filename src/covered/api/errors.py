@@ -17,9 +17,11 @@ STATUS_BY_CODE = {
 """Every other domain error code is a conflict with the current state (409)."""
 
 
-def error_response(status_code: int, code: str, message: str) -> JSONResponse:
+def error_response(
+    status_code: int, code: str, message: str, **extra: str
+) -> JSONResponse:
     return JSONResponse(
-        status_code=status_code, content={"error": code, "message": message}
+        status_code=status_code, content={"error": code, "message": message, **extra}
     )
 
 

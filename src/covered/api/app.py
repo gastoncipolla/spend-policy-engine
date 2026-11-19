@@ -5,6 +5,7 @@ import os
 from fastapi import FastAPI
 
 from covered.api.errors import install_error_handlers
+from covered.api.request_context import RequestContextMiddleware
 from covered.api.routes import catalog, expenses, policies
 from covered.services.compilation import Compiler
 from covered.services.provider_compiler import default_compiler
@@ -28,6 +29,7 @@ def create_app(
     open_database(app.state.db_path).close()  # apply migrations once, up front
 
     install_error_handlers(app)
+    app.add_middleware(RequestContextMiddleware)
     app.include_router(catalog.router)
     app.include_router(policies.router)
     app.include_router(expenses.router)
