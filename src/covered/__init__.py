@@ -1,2 +1,1 @@
-def main() -> None:
-    print("Hello from covered!")
+"""Covered: executable expense policies (will this expense be covered?)."""
