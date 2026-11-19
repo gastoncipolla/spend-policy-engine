@@ -175,7 +175,6 @@ def delete_uncompilable(conn: sqlite3.Connection, policy_id: int, version: int) 
 
 
 def _uncompilable(row: sqlite3.Row) -> StoredUncompilable:
-    return StoredUncompilable(
-        **{key: row[key] for key in row.keys() if key != "categories"},
-        categories=json.loads(row["categories"]),
-    )
+    data = dict(row)
+    data["categories"] = json.loads(data["categories"])
+    return StoredUncompilable(**data)

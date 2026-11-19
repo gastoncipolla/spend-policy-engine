@@ -97,8 +97,7 @@ def retire_active_version(conn: sqlite3.Connection, policy_id: int) -> None:
 
 
 def _version(row: sqlite3.Row) -> PolicyVersion:
-    meta = row["compile_meta"]
-    return PolicyVersion(
-        **{key: row[key] for key in row.keys() if key != "compile_meta"},
-        compile_meta=json.loads(meta) if meta is not None else None,
-    )
+    data = dict(row)
+    if data["compile_meta"] is not None:
+        data["compile_meta"] = json.loads(data["compile_meta"])
+    return PolicyVersion(**data)
