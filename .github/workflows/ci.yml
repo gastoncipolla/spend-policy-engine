@@ -4,14 +4,40 @@ on:
   push:
     branches: [main]
   pull_request:
+    types: [opened, edited, synchronize, reopened]
+
+permissions:
+  contents: read
 
 jobs:
+  conventions:
+    name: Branch and PR title conventions
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check branch name and PR title (see CONTRIBUTING.md)
+        env:
+          BRANCH: ${{ github.head_ref }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          types='feat|fix|docs|test|refactor|perf|ci|chore'
+          ok=true
+          if ! [[ "$BRANCH" =~ ^($types)/[a-z0-9][a-z0-9-]*$ ]]; then
+            echo "::error::Branch '$BRANCH' must look like <type>/<short-kebab-description>, type in: ${types//|/, }"
+            ok=false
+          fi
+          if ! [[ "$TITLE" =~ ^($types)(\([a-z0-9-]+\))?!?:\ .+ ]]; then
+            echo "::error::PR title '$TITLE' must follow Conventional Commits: <type>(<scope>)?: <summary>"
+            ok=false
+          fi
+          $ok
+
   test:
     name: Lint and tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: "0.13.3"
       - run: uv sync --frozen
@@ -23,7 +49,7 @@ jobs:
     name: Docker build and smoke test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - run: docker build -t covered .
       - name: Start the container (mock mode, no API key)
         run: docker run -d --name covered -p 8000:8000 covered
