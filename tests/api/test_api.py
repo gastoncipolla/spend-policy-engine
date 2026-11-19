@@ -1,13 +1,13 @@
 """API tests (SPEC §12): envelope, policy lifecycle, idempotency, resolve, errors."""
 
 import pytest
-from api_builders import approve_all
+from api_builders import add_users, approve_all, bearer
 from fastapi.testclient import TestClient
 
 from covered.api import create_app
 from covered.services import employees
 from covered.store import policies as policy_store
-from covered.store.db import transaction
+from covered.store.db import open_database, transaction
 from covered.store.records import VersionStatus
 
 TAXI = {
@@ -20,9 +20,13 @@ TAXI = {
 }
 
 
+ANA = bearer("ana")
+
+
 def _submit(client, key, **overrides):
+    """Submit as ana (the expense's employee)."""
     return client.post(
-        "/expenses", json={**TAXI, **overrides}, headers={"Idempotency-Key": key}
+        "/expenses", json={**TAXI, **overrides}, headers={"Idempotency-Key": key, **ANA}
     )
 
 
@@ -35,14 +39,27 @@ def _assert_error(response, status_code, code):
 # Catalog and envelope
 
 
-def test_health_categories_and_employees(client, db):
-    employees.create_employee(db, "ana", "Ana", None)
-    assert client.get("/health").json() == {"status": "ok"}
+def test_health_categories_and_employees(client):
+    assert client.get("/health", headers={}).json() == {"status": "ok"}
     codes = [c["code"] for c in client.get("/categories").json()]
     assert codes[0] == "meals" and "other" in codes and len(codes) == 9
     assert client.get("/employees").json() == [
-        {"id": "ana", "name": "Ana", "policy_id": None}
+        {
+            "id": "ana",
+            "name": "Ana",
+            "policy_id": None,
+            "roles": ["employee"],
+            "manager_id": None,
+        },
+        {
+            "id": "fede",
+            "name": "Fede",
+            "policy_id": None,
+            "roles": ["employee", "finance"],
+            "manager_id": None,
+        },
     ]
+    assert [e["id"] for e in client.get("/employees", headers=ANA).json()] == ["ana"]
 
 
 def test_unknown_route_and_resources_use_the_error_envelope(client):
@@ -68,7 +85,7 @@ def test_unknown_route_and_resources_use_the_error_envelope(client):
 )
 def test_invalid_expense_is_a_validation_error(client, active, overrides):
     _assert_error(
-        client.post("/expenses/check", json={**TAXI, **overrides}),
+        client.post("/expenses/check", json={**TAXI, **overrides}, headers=ANA),
         422,
         "validation_error",
     )
@@ -172,7 +189,11 @@ def test_compile_failure_leaves_nothing(tmp_path, monkeypatch):
     # The default compiler is chosen by the environment: force the mock, which
     # only knows the sample policies.
     monkeypatch.setenv("COVERED_PROVIDER", "mock")
-    with TestClient(create_app(tmp_path / "default.db")) as client:
+    db = open_database(tmp_path / "default.db")
+    add_users(db)
+    db.close()
+    app = create_app(tmp_path / "default.db")
+    with TestClient(app, headers=bearer("fede")) as client:
         policy = client.post("/policies", json={"name": "Sales"}).json()
         client.post(f"/policies/{policy['id']}/versions", json={"text": "Some text."})
         response = client.post(f"/policies/{policy['id']}/versions/1/compile")
@@ -187,7 +208,7 @@ def test_compile_failure_leaves_nothing(tmp_path, monkeypatch):
 
 
 def test_check_returns_a_decision_and_stores_nothing(client, active):
-    response = client.post("/expenses/check", json=TAXI)
+    response = client.post("/expenses/check", json=TAXI, headers=ANA)
     assert response.status_code == 200
     decision = response.json()
     assert decision["outcome"] == "approved"
@@ -201,7 +222,9 @@ def test_submit_with_huge_amount_is_a_validation_error(client, active):
 
 
 def test_submit_requires_idempotency_key(client, active):
-    _assert_error(client.post("/expenses", json=TAXI), 422, "validation_error")
+    _assert_error(
+        client.post("/expenses", json=TAXI, headers=ANA), 422, "validation_error"
+    )
 
 
 def test_idempotent_replay_returns_same_status_and_body(client, active):
@@ -238,6 +261,7 @@ def test_resolve_transitions(client, active):
     )
     assert resolved.status_code == 200
     assert resolved.json()["expense"]["status"] == "approved"
+    assert resolved.json()["expense"]["resolved_by"] == "fede"
 
     for expense_id in (pending, approved):
         _assert_error(
@@ -269,11 +293,18 @@ def test_list_expenses_filters(client, active):
 
 def test_no_active_policy_is_a_conflict(client, db, draft):
     policy_id, _ = draft
-    employees.create_employee(db, "bruno", "Bruno", policy_id)
+    employees.create_employee(db, "bruno", "Bruno", policy_id, token="demo-bruno")
     payload = {**TAXI, "employee_id": "bruno"}
-    _assert_error(client.post("/expenses/check", json=payload), 409, "no_active_policy")
+    bruno = bearer("bruno")
     _assert_error(
-        client.post("/expenses", json=payload, headers={"Idempotency-Key": "k"}),
+        client.post("/expenses/check", json=payload, headers=bruno),
+        409,
+        "no_active_policy",
+    )
+    _assert_error(
+        client.post(
+            "/expenses", json=payload, headers={"Idempotency-Key": "k", **bruno}
+        ),
         409,
         "no_active_policy",
     )

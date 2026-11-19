@@ -8,7 +8,12 @@ from starlette.exceptions import HTTPException
 
 from covered.domain.errors import CoveredError
 
-STATUS_BY_CODE = {"validation_error": 422, "not_found": 404}
+STATUS_BY_CODE = {
+    "validation_error": 422,
+    "not_found": 404,
+    "unauthenticated": 401,
+    "forbidden": 403,
+}
 """Every other domain error code is a conflict with the current state (409)."""
 
 
@@ -21,7 +26,12 @@ def error_response(status_code: int, code: str, message: str) -> JSONResponse:
 def install_error_handlers(app: FastAPI) -> None:
     @app.exception_handler(CoveredError)
     async def _domain_error(request: Request, exc: CoveredError) -> JSONResponse:
-        return error_response(STATUS_BY_CODE.get(exc.code, 409), exc.code, exc.message)
+        response = error_response(
+            STATUS_BY_CODE.get(exc.code, 409), exc.code, exc.message
+        )
+        if exc.code == "unauthenticated":
+            response.headers["WWW-Authenticate"] = "Bearer"
+        return response
 
     @app.exception_handler(RequestValidationError)
     @app.exception_handler(ValidationError)

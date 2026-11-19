@@ -19,28 +19,46 @@ def expense(employee, amount_minor, category, occurred_at=WEDNESDAY_NOON, **extr
     }
 
 
+def as_employee(kwargs) -> dict[str, str]:
+    """Check/submit act as the expense's own employee (SPEC §12a)."""
+    return {"Authorization": f"Bearer demo-{kwargs['employee']}"}
+
+
 def check(client, **kwargs):
-    response = client.post("/expenses/check", json=expense(**kwargs))
+    response = client.post(
+        "/expenses/check", json=expense(**kwargs), headers=as_employee(kwargs)
+    )
     assert response.status_code == 200, response.json()
     return response.json()
 
 
 def submit(client, key, **kwargs):
     response = client.post(
-        "/expenses", json=expense(**kwargs), headers={"Idempotency-Key": key}
+        "/expenses",
+        json=expense(**kwargs),
+        headers={"Idempotency-Key": key, **as_employee(kwargs)},
     )
     assert response.status_code == 201, response.json()
     return response.json()
 
 
-def test_seed_creates_two_active_policies_and_four_employees(client):
+def test_seed_creates_two_active_policies_and_five_demo_users(client):
     policies = client.get("/policies").json()
     assert {p["name"]: p["active_version"] for p in policies} == {
         "Sales": 1,
         "Engineering": 1,
     }
-    staff = {e["id"]: e["policy_id"] for e in client.get("/employees").json()}
-    assert staff == {"ana": 1, "bruno": 1, "carla": 2, "diego": 2}
+    staff = {
+        e["id"]: (e["policy_id"], e["manager_id"], e["roles"])
+        for e in client.get("/employees").json()
+    }
+    assert staff == {
+        "ana": (1, "bruno", ["employee"]),
+        "bruno": (1, "fede", ["employee", "manager"]),
+        "carla": (2, "diego", ["employee"]),
+        "diego": (2, "fede", ["employee", "manager"]),
+        "fede": (2, None, ["employee", "finance"]),
+    }
 
 
 def test_seed_is_repeatable(seeded_db):

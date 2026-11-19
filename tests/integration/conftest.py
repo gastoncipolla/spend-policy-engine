@@ -20,6 +20,7 @@ def seeded_db(tmp_path):
 
 @pytest.fixture
 def client(seeded_db):
+    """Calls as fede (finance) unless a test passes other headers."""
     app = create_app(seeded_db, compiler=ProviderCompiler(MockProvider()))
-    with TestClient(app) as test_client:
+    with TestClient(app, headers={"Authorization": "Bearer demo-fede"}) as test_client:
         yield test_client

@@ -7,16 +7,31 @@ from covered.domain import (
     PeriodLimitParams,
     PreApprovalThresholdParams,
 )
+from covered.services import employees
 from covered.services.compilation import (
     CompilationSuccess,
     ProposedRule,
     ProposedUncompilable,
 )
+from covered.store.records import Role
 
 API_POLICY_TEXT = """Ground transport is limited to USD 200 per month.
 Ground transport above USD 80 requires pre-approval.
 Meals are capped at USD 50 per expense.
 Prefer partner hotels when possible."""
+
+
+def bearer(user: str) -> dict[str, str]:
+    """Auth header for a test user created by `add_users` (token "demo-<id>")."""
+    return {"Authorization": f"Bearer demo-{user}"}
+
+
+def add_users(db) -> None:
+    """fede (finance, the default caller) and ana (plain employee, no policy yet)."""
+    employees.create_employee(
+        db, "fede", "Fede", None, roles=[Role.EMPLOYEE, Role.FINANCE], token="demo-fede"
+    )
+    employees.create_employee(db, "ana", "Ana", None, token="demo-ana")
 
 
 def fake_compiler(text: str) -> CompilationSuccess:

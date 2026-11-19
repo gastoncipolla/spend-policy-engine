@@ -1,7 +1,7 @@
 """Fixtures for API tests: an app on a temp SQLite file with a fake compiler."""
 
 import pytest
-from api_builders import API_POLICY_TEXT, approve_all, fake_compiler
+from api_builders import API_POLICY_TEXT, add_users, approve_all, bearer, fake_compiler
 from fastapi.testclient import TestClient
 
 from covered.api import create_app
@@ -15,17 +15,21 @@ def db_path(tmp_path):
 
 
 @pytest.fixture
-def client(db_path):
-    with TestClient(create_app(db_path, compiler=fake_compiler)) as test_client:
-        yield test_client
+def db(db_path):
+    """A direct connection for setup the API does not expose (users), with
+    fede (finance) and ana (employee) already created."""
+    conn = open_database(db_path)
+    add_users(conn)
+    yield conn
+    conn.close()
 
 
 @pytest.fixture
-def db(db_path):
-    """A direct connection for setup the API does not expose (employees)."""
-    conn = open_database(db_path)
-    yield conn
-    conn.close()
+def client(db_path, db):
+    """Calls as fede (finance) unless a test passes other headers."""
+    app = create_app(db_path, compiler=fake_compiler)
+    with TestClient(app, headers=bearer("fede")) as test_client:
+        yield test_client
 
 
 @pytest.fixture
@@ -44,5 +48,5 @@ def active(client, db, draft):
     approve_all(client, detail)
     response = client.post(f"/policies/{policy_id}/versions/1/activate")
     assert response.status_code == 200, response.json()
-    employees.create_employee(db, "ana", "Ana", policy_id)
+    employees.assign_policy(db, "ana", policy_id)
     return policy_id

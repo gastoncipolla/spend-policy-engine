@@ -3,7 +3,7 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from covered.api.deps import Conn
+from covered.api.deps import Conn, CurrentActor
 from covered.domain import CATEGORY_NAMES
 from covered.services import employees
 from covered.store.records import Employee
@@ -22,10 +22,11 @@ def health() -> dict[str, str]:
 
 
 @router.get("/categories")
-def list_categories() -> list[CategoryOut]:
+def list_categories(actor: CurrentActor) -> list[CategoryOut]:
     return [CategoryOut(code=code, name=name) for code, name in CATEGORY_NAMES.items()]
 
 
 @router.get("/employees")
-def list_employees(conn: Conn) -> list[Employee]:
-    return employees.list_employees(conn)
+def list_employees(conn: Conn, actor: CurrentActor) -> list[Employee]:
+    """Self (employee), self + team (manager), everyone (finance)."""
+    return employees.list_employees(conn, actor)
