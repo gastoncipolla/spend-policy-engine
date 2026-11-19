@@ -28,6 +28,18 @@ Then open:
 Demo employees: `ana` and `bruno` (Sales), `carla` and `diego` (Engineering). The sample policies are
 in `fixtures/policies/` and belong to a fictional company.
 
+Requirements: [uv](https://docs.astral.sh/uv/) (it installs Python 3.13 if needed).
+
+### With Docker (alternative)
+
+```bash
+docker build -t covered .
+docker run --rm -p 8000:8000 covered                 # mock mode
+docker run --rm -p 8000:8000 --env-file .env covered # real LLM, see below
+```
+
+The container seeds the demo data on start. CI builds and smoke-tests this image on every push.
+
 ## CLI
 
 The CLI calls the same services as the API directly, not over HTTP. Amounts are decimals
