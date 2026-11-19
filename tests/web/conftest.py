@@ -16,5 +16,6 @@ def client(tmp_path):
     seed(conn)
     conn.close()
     app = create_app(db_path, compiler=ProviderCompiler(MockProvider()))
-    with TestClient(app) as test_client:
+    # JSON API calls in these tests go as finance; pages use the "act as" cookie.
+    with TestClient(app, headers={"Authorization": "Bearer demo-fede"}) as test_client:
         yield test_client

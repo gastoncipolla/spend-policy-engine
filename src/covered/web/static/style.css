@@ -109,3 +109,7 @@ mark sup { font-size: 11px; font-weight: 700; color: var(--accent); margin-left:
 .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
 .tiles a.card { display: block; color: inherit; text-decoration: none; }
 .tiles a.card:hover { border-color: var(--accent); }
+
+/* "Act as" selector (demo identities, SPEC §12a) */
+header.top .act-as { display: flex; align-items: center; gap: 8px; margin-left: 16px; font-size: 14px; }
+header.top .act-as select { width: auto; }

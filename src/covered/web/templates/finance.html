@@ -2,6 +2,9 @@
 {% block title %}Finance · Covered{% endblock %}
 {% block content %}
 <h1>Finance</h1>
+{% if denied %}
+<div class="alert error">{{ denied }}</div>
+{% else %}
 {% if not summary %}
 <p class="muted">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
 {% else %}
@@ -114,29 +117,7 @@
 {% endif %}
 
 <h2>Pending expenses</h2>
-<div class="card">
-  {% if pending %}
-  <table>
-    <tr><th>#</th><th>Employee</th><th>When</th><th>Category</th><th class="num">Amount</th><th>Why it needs approval</th><th></th></tr>
-    {% for item in pending %}
-    <tr>
-      <td>{{ item.expense.id }}</td>
-      <td>{{ item.expense.employee_id }}</td>
-      <td>{{ item.expense.occurred_at | local_time }}</td>
-      <td>{{ categories[item.expense.category] }}</td>
-      <td class="num">{{ item.expense.amount_minor | money }}</td>
-      <td>{% for r in item.decision.reasons %}<div>{{ r.message }}{% if r.clause %}<blockquote>“{{ r.clause }}”</blockquote>{% endif %}</div>{% endfor %}</td>
-      <td style="white-space:nowrap">
-        {% for resolution, css in [("approved", "approve"), ("rejected", "reject")] %}
-        <form method="post" action="/finance/expenses/{{ item.expense.id }}/resolve" class="inline">
-          <input type="hidden" name="policy_id" value="{{ summary.id if summary else 0 }}"><input type="hidden" name="version" value="{{ detail.version if detail else 0 }}">
-          <button class="small {{ css }}" name="resolution" value="{{ resolution }}">{{ "Approve" if resolution == "approved" else "Reject" }}</button>
-        </form>
-        {% endfor %}
-      </td>
-    </tr>
-    {% endfor %}
-  </table>
-  {% else %}<p class="muted">Nothing pending.</p>{% endif %}
-</div>
+{% set resolve_base = "/finance" %}
+{% include "_pending.html" %}
+{% endif %}
 {% endblock %}

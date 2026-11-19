@@ -11,9 +11,18 @@
     <a class="brand" href="/">Covered</a>
     <nav>
       <a href="/employee">Employee</a>
-      <a href="/finance">Finance</a>
+      {% if actor and is_finance(actor) %}<a href="/finance">Finance</a>{% endif %}
       <a href="/docs">API</a>
     </nav>
+    <form method="post" action="/act-as" class="act-as">
+      <label for="act-as">Act as</label>
+      <select id="act-as" name="user_id" onchange="this.form.submit()">
+        {% if not actor %}<option value="" selected>choose a demo user…</option>{% endif %}
+        {% for u in users %}<option value="{{ u.id }}" {% if actor and u.id == actor.id %}selected{% endif %}>{{ u.name }} ({{ u.roles | sort | join(", ") }})</option>{% endfor %}
+      </select>
+      <input type="hidden" name="next" value="{{ here }}">
+      <noscript><button class="small secondary" type="submit">Switch</button></noscript>
+    </form>
     <span class="provider">Compiler provider:
       <span class="badge {{ provider }}">{{ provider }}{% if provider == "mock" %} (sample policies only){% elif provider == "anthropic" %} (real LLM){% endif %}</span>
     </span>

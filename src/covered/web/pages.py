@@ -1,8 +1,13 @@
 """Server-rendered pages (SPEC §8): `/`, `/employee`, `/finance`.
 
-Pages call the same services as the API. Form posts on /finance redirect back
-(post/redirect/get); the employee form renders its decision directly, and its
-hidden idempotency key makes a browser re-post a harmless replay.
+Pages call the same services as the API, acting as the user chosen in the
+"act as" selector (SPEC §12a): the cookie holds that user's demo token, the
+same one the API takes as `Authorization: Bearer`. Pages only show what the
+user may do, but the services enforce it anyway.
+
+Form posts that change state redirect back (post/redirect/get); the employee
+form renders its decision directly, and its hidden idempotency key makes a
+browser re-post a harmless replay.
 """
 
 import uuid
@@ -18,13 +23,14 @@ from pydantic import ValidationError
 
 from covered.api.deps import Conn, InjectedCompiler
 from covered.domain import CATEGORY_NAMES, Decision, ExpenseInput, UncompilableEffect
-from covered.domain.errors import CoveredError, NotFoundError
+from covered.domain.errors import CoveredError, NotFoundError, UnauthenticatedError
 from covered.domain.money import format_money, parse_amount
-from covered.services import employees, expenses, policies
+from covered.services import authz, employees, expenses, policies
+from covered.services.authz import Actor
 from covered.services.compilation import compile_version
 from covered.services.config import COMPANY_TZ, parse_company_time, utc_now
 from covered.services.describe import OUTCOME_LABELS, categories_text, describe_rule
-from covered.store.records import ExpenseStatus, RuleStatus
+from covered.store.records import ExpenseStatus, Role, RuleStatus
 from covered.web.highlight import highlight_clauses
 
 HERE = Path(__file__).parent
@@ -39,7 +45,12 @@ templates.env.globals.update(
     categories_text=categories_text,
     categories=CATEGORY_NAMES,
     effects=list(UncompilableEffect),
+    is_finance=authz.is_finance,
+    is_manager=lambda user: Role.MANAGER in user.roles,
 )
+
+TOKEN_COOKIE = "covered_token"
+CHOOSE_USER = "Choose who you are with the “act as” selector first."
 
 
 def install(app: FastAPI) -> None:
@@ -54,20 +65,65 @@ def install(app: FastAPI) -> None:
         )
 
 
-def _render(request: Request, template: str, **context) -> HTMLResponse:
-    context["provider"] = request.app.state.provider_name
-    return templates.TemplateResponse(request, template, context)
+def _actor(request: Request, conn: Conn) -> Actor | None:
+    """The user behind the "act as" cookie, or None if none (or unknown) is set."""
+    try:
+        return employees.authenticate(conn, request.cookies.get(TOKEN_COOKIE))
+    except UnauthenticatedError:
+        return None
+
+
+def _render(
+    request: Request,
+    conn: Conn,
+    actor: Actor | None,
+    template: str,
+    *,
+    status_code: int = 200,
+    **context,
+) -> HTMLResponse:
+    context.update(
+        provider=request.app.state.provider_name,
+        actor=actor,
+        users=employees.demo_users(conn),
+        here=request.url.path,
+    )
+    return templates.TemplateResponse(
+        request, template, context, status_code=status_code
+    )
+
+
+# Act as (demo identity, no login)
+
+
+def act_as(
+    conn: Conn,
+    user_id: Annotated[str, Form()],
+    next_page: Annotated[str, Form(alias="next")] = "/",
+) -> RedirectResponse:
+    """Store the chosen demo user's token in a cookie; an unknown user clears it."""
+    target = next_page if next_page in ("/", "/employee", "/finance") else "/"
+    response = RedirectResponse(target, status_code=303)
+    token = employees.demo_token(conn, user_id)
+    if token:
+        response.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite="lax")
+    else:
+        response.delete_cookie(TOKEN_COOKIE)
+    return response
 
 
 # Home
 
 
 def home(request: Request, conn: Conn) -> HTMLResponse:
+    actor = _actor(request, conn)
     return _render(
         request,
+        conn,
+        actor,
         "index.html",
-        policies=policies.list_policies(conn),
-        employees=employees.list_employees(conn),
+        policies=policies.list_policies(conn, actor) if actor else [],
+        employees=employees.list_employees(conn, actor) if actor else [],
     )
 
 
@@ -75,15 +131,17 @@ def home(request: Request, conn: Conn) -> HTMLResponse:
 
 
 def employee_page(
-    request: Request, conn: Conn, employee_id: str | None = None
+    request: Request,
+    conn: Conn,
+    error: str | None = None,
+    notice: str | None = None,
 ) -> HTMLResponse:
-    return _employee(request, conn, employee_id)
+    return _employee(request, conn, _actor(request, conn), error=error, notice=notice)
 
 
 def employee_post(
     request: Request,
     conn: Conn,
-    employee_id: Annotated[str, Form()],
     amount: Annotated[str, Form()],
     category: Annotated[str, Form()],
     occurred_at: Annotated[str, Form()],
@@ -93,6 +151,9 @@ def employee_post(
     justification: Annotated[str, Form()] = "",
     pre_approval_id: Annotated[str, Form()] = "",
 ) -> HTMLResponse:
+    actor = _actor(request, conn)
+    if actor is None:
+        return _employee(request, conn, None, error=CHOOSE_USER)
     form = {
         "amount": amount,
         "category": category,
@@ -103,7 +164,7 @@ def employee_post(
     }
     try:
         expense = ExpenseInput(
-            employee_id=employee_id,
+            employee_id=actor.id,
             amount_minor=parse_amount(amount),
             category=category,
             occurred_at=parse_company_time(occurred_at),
@@ -112,38 +173,61 @@ def employee_post(
             pre_approval_id=pre_approval_id or None,
         )
         if action == "submit":
-            result = expenses.submit_expense(conn, expense, idempotency_key)
+            result = expenses.submit_expense(conn, actor, expense, idempotency_key)
             decision = Decision.model_validate(result.body["decision"])
             submitted = result.body["expense"]["id"]
         else:
-            decision, submitted = expenses.check_expense(conn, expense), None
+            decision, submitted = expenses.check_expense(conn, actor, expense), None
     except (CoveredError, ValidationError) as exc:
-        return _employee(request, conn, employee_id, form=form, error=_message(exc))
+        return _employee(request, conn, actor, form=form, error=_message(exc))
     return _employee(
-        request, conn, employee_id, form=form, decision=decision, submitted=submitted
+        request, conn, actor, form=form, decision=decision, submitted=submitted
     )
+
+
+def employee_resolve(
+    request: Request,
+    conn: Conn,
+    expense_id: int,
+    resolution: Annotated[ExpenseStatus, Form()],
+) -> RedirectResponse:
+    """A manager resolves a team member's pending expense."""
+    message = _try(
+        request,
+        conn,
+        lambda actor: expenses.resolve_expense(conn, actor, expense_id, resolution),
+        f"Expense #{expense_id} {resolution}.",
+    )
+    return RedirectResponse(f"/employee?{urlencode(message)}", status_code=303)
 
 
 def _employee(
     request: Request,
     conn: Conn,
-    employee_id: str | None,
+    actor: Actor | None,
     *,
     form: dict[str, str] | None = None,
     **context,
 ) -> HTMLResponse:
-    staff = employees.list_employees(conn)
-    current = next((e for e in staff if e.id == employee_id), None)
-    if current is None and staff:
-        current = staff[0]
-    history = expenses.list_expenses(conn, employee_id=current.id) if current else []
+    history, team_pending = [], []
+    if actor is not None:
+        history = expenses.list_expenses(conn, actor, employee_id=actor.id)
+        if Role.MANAGER in actor.roles:
+            team_pending = [
+                item
+                for item in expenses.list_expenses(
+                    conn, actor, status=ExpenseStatus.PENDING
+                )
+                if item.expense.employee_id != actor.id
+            ]
     now = utc_now().astimezone(COMPANY_TZ).strftime("%Y-%m-%dT%H:%M")
     return _render(
         request,
+        conn,
+        actor,
         "employee.html",
-        employees=staff,
-        current=current,
         history=history,
+        team_pending=team_pending,
         form=form or {"occurred_at": now, "category": "meals"},
         idempotency_key=str(uuid.uuid4()),
         **context,
@@ -161,7 +245,19 @@ def finance_page(
     error: str | None = None,
     notice: str | None = None,
 ) -> HTMLResponse:
-    summaries = policies.list_policies(conn)
+    actor = _actor(request, conn)
+    if actor is None or not authz.is_finance(actor):
+        message = CHOOSE_USER if actor is None else "The finance view is for finance."
+        return _render(
+            request,
+            conn,
+            actor,
+            "finance.html",
+            status_code=403,
+            denied=message,
+            error=error,
+        )
+    summaries = policies.list_policies(conn, actor)
     summary = next((p for p in summaries if p.id == policy_id), None)
     if summary is None and summaries:
         summary = summaries[0]
@@ -173,7 +269,7 @@ def finance_page(
             or max(v.version for v in summary.versions)
         )
         try:
-            detail = policies.get_version_detail(conn, summary.id, number)
+            detail = policies.get_version_detail(conn, actor, summary.id, number)
         except NotFoundError as exc:
             error = exc.message
     labels = {}
@@ -182,16 +278,37 @@ def finance_page(
         labels.update({item.clause: f"U{item.id}" for item in detail.uncompilable})
     return _render(
         request,
+        conn,
+        actor,
         "finance.html",
         policies=summaries,
         summary=summary,
         detail=detail,
         policy_html=highlight_clauses(detail.text, labels) if detail else "",
         editable=detail is not None and detail.status in ("draft", "compile_failed"),
-        pending=expenses.list_expenses(conn, status=ExpenseStatus.PENDING),
+        pending=expenses.list_expenses(conn, actor, status=ExpenseStatus.PENDING),
         error=error,
         notice=notice,
     )
+
+
+def _try(request: Request, conn: Conn, action, notice: str) -> dict[str, str]:
+    """Run `action(actor)`; return the notice, or the error to show instead."""
+    actor = _actor(request, conn)
+    if actor is None:
+        return {"error": CHOOSE_USER}
+    try:
+        action(actor)
+    except (CoveredError, ValidationError) as exc:
+        return {"error": _message(exc)}
+    return {"notice": notice}
+
+
+def _attempt(
+    request: Request, conn: Conn, policy_id: int, version: int, action, notice: str
+) -> RedirectResponse:
+    """Run a finance action as the current user and redirect back to /finance."""
+    return _back(policy_id, version, **_try(request, conn, action, notice))
 
 
 def _back(policy_id: int, version: int, **message: str) -> RedirectResponse:
@@ -199,16 +316,8 @@ def _back(policy_id: int, version: int, **message: str) -> RedirectResponse:
     return RedirectResponse(f"/finance?{query}", status_code=303)
 
 
-def _attempt(policy_id: int, version: int, action, notice: str) -> RedirectResponse:
-    """Run a finance action and redirect back with a notice or the error."""
-    try:
-        action()
-    except (CoveredError, ValidationError) as exc:
-        return _back(policy_id, version, error=_message(exc))
-    return _back(policy_id, version, notice=notice)
-
-
 def review_rule(
+    request: Request,
     conn: Conn,
     rule_id: int,
     status: Annotated[RuleStatus, Form()],
@@ -216,14 +325,17 @@ def review_rule(
     version: Annotated[int, Form()],
 ) -> RedirectResponse:
     return _attempt(
+        request,
+        conn,
         policy_id,
         version,
-        lambda: policies.update_rule(conn, rule_id, status=status),
+        lambda actor: policies.update_rule(conn, actor, rule_id, status=status),
         f"Rule R{rule_id} {status}.",
     )
 
 
 def classify(
+    request: Request,
     conn: Conn,
     item_id: int,
     effect: Annotated[UncompilableEffect, Form()],
@@ -232,55 +344,68 @@ def classify(
     categories: Annotated[list[str] | None, Form()] = None,
 ) -> RedirectResponse:
     return _attempt(
+        request,
+        conn,
         policy_id,
         version,
-        lambda: policies.classify_uncompilable(
-            conn, item_id, categories=categories or ["*"], effect=effect
+        lambda actor: policies.classify_uncompilable(
+            conn, actor, item_id, categories=categories or ["*"], effect=effect
         ),
         f"Clause U{item_id} confirmed.",
     )
 
 
 def compile_draft(
+    request: Request,
     conn: Conn,
     compiler: InjectedCompiler,
     policy_id: Annotated[int, Form()],
     version: Annotated[int, Form()],
 ) -> RedirectResponse:
     return _attempt(
+        request,
+        conn,
         policy_id,
         version,
-        lambda: compile_version(conn, policy_id, version, compiler),
+        lambda actor: compile_version(conn, actor, policy_id, version, compiler),
         "Compiled: review the proposed rules.",
     )
 
 
 def activate(
+    request: Request,
     conn: Conn,
     policy_id: Annotated[int, Form()],
     version: Annotated[int, Form()],
 ) -> RedirectResponse:
     return _attempt(
+        request,
+        conn,
         policy_id,
         version,
-        lambda: policies.activate_version(conn, policy_id, version),
+        lambda actor: policies.activate_version(conn, actor, policy_id, version),
         f"Version {version} is now active.",
     )
 
 
 def new_version(
+    request: Request,
     conn: Conn,
     policy_id: Annotated[int, Form()],
     text: Annotated[str, Form()],
 ) -> RedirectResponse:
+    actor = _actor(request, conn)
+    if actor is None:
+        return _back(policy_id, 0, error=CHOOSE_USER)
     try:
-        created = policies.create_version(conn, policy_id, text)
+        created = policies.create_version(conn, actor, policy_id, text)
     except (CoveredError, ValidationError) as exc:
         return _back(policy_id, 0, error=_message(exc))
     return _back(policy_id, created.version, notice="Draft created: compile it next.")
 
 
 def resolve(
+    request: Request,
     conn: Conn,
     expense_id: int,
     resolution: Annotated[ExpenseStatus, Form()],
@@ -288,9 +413,11 @@ def resolve(
     version: Annotated[int, Form()],
 ) -> RedirectResponse:
     return _attempt(
+        request,
+        conn,
         policy_id,
         version,
-        lambda: expenses.resolve_expense(conn, expense_id, resolution),
+        lambda actor: expenses.resolve_expense(conn, actor, expense_id, resolution),
         f"Expense #{expense_id} {resolution}.",
     )
 
@@ -305,8 +432,10 @@ def _message(exc: Exception) -> str:
 
 ROUTES = [
     ("/", "GET", home),
+    ("/act-as", "POST", act_as),
     ("/employee", "GET", employee_page),
     ("/employee", "POST", employee_post),
+    ("/employee/expenses/{expense_id}/resolve", "POST", employee_resolve),
     ("/finance", "GET", finance_page),
     ("/finance/rules/{rule_id}", "POST", review_rule),
     ("/finance/uncompilable/{item_id}", "POST", classify),

@@ -11,9 +11,13 @@ SALES_TEXT = (
 ).read_text(encoding="utf-8")
 
 
+def act_as(client, user_id, page="/"):
+    """Pick a demo user in the "act as" selector (sets the cookie)."""
+    return client.post("/act-as", data={"user_id": user_id, "next": page})
+
+
 def employee_form(**overrides):
     form = {
-        "employee_id": "ana",
         "amount": "95.50",
         "category": "meals",
         "occurred_at": "2026-11-22T23:30",  # Sunday, company time
@@ -23,22 +27,40 @@ def employee_form(**overrides):
     return {**form, **overrides}
 
 
-def test_home_links_both_views_and_shows_provider(client):
-    page = client.get("/")
-    assert page.status_code == 200
-    assert 'href="/employee"' in page.text and 'href="/finance"' in page.text
-    assert "mock (sample policies only)" in page.text
-    assert "Sales" in page.text and "Engineering" in page.text
+def test_home_asks_who_you_are_then_shows_what_you_may_see(client):
+    anonymous = client.get("/")
+    assert anonymous.status_code == 200
+    assert "mock (sample policies only)" in anonymous.text
+    assert 'action="/act-as"' in anonymous.text and "Sales" not in anonymous.text
+
+    finance = act_as(client, "fede")
+    assert 'href="/employee"' in finance.text and 'href="/finance"' in finance.text
+    assert "Sales" in finance.text and "Engineering" in finance.text
+
+    employee = act_as(client, "ana")
+    assert 'href="/finance"' not in employee.text
+    assert "Sales" in employee.text and "Engineering" not in employee.text
 
 
-def test_employee_page_lists_employees_and_form(client):
-    page = client.get("/employee?employee_id=bruno")
+def test_act_as_unknown_user_clears_the_cookie(client):
+    act_as(client, "ana")
+    page = act_as(client, "nobody", "/employee")
+    assert "Choose who you are" in page.text
+
+
+def test_employee_page_is_for_the_current_user(client):
+    act_as(client, "bruno")
+    page = client.get("/employee")
     assert page.status_code == 200
     assert "Expense for Bruno" in page.text
     assert "Will this be covered?" in page.text
+    assert "Team pending" in page.text
+    act_as(client, "ana")
+    assert "Team pending" not in client.get("/employee").text
 
 
 def test_employee_check_shows_outcome_and_quoted_clauses(client):
+    act_as(client, "ana")
     page = client.post("/employee", data=employee_form())
     assert page.status_code == 200
     assert "badge big rejected" in page.text
@@ -48,6 +70,7 @@ def test_employee_check_shows_outcome_and_quoted_clauses(client):
 
 
 def test_employee_submit_stores_once_even_if_reposted(client):
+    act_as(client, "ana")
     form = employee_form(
         action="submit", amount="40.00", occurred_at="2026-11-18T12:00"
     )
@@ -59,12 +82,29 @@ def test_employee_submit_stores_once_even_if_reposted(client):
 
 
 def test_employee_invalid_amount_shows_error(client):
+    act_as(client, "ana")
     page = client.post("/employee", data=employee_form(amount="1.234"))
     assert page.status_code == 200
     assert "more than 2 decimal places" in page.text
 
 
+def test_employee_post_without_a_user_stores_nothing(client):
+    page = client.post("/employee", data=employee_form(action="submit"))
+    assert "Choose who you are" in page.text
+    assert client.get("/expenses").json() == []
+
+
+def test_finance_view_requires_finance(client):
+    assert client.get("/finance").status_code == 403
+    act_as(client, "bruno")
+    page = client.get("/finance")
+    assert page.status_code == 403 and "for finance" in page.text
+    refused = client.post("/finance/activate", data={"policy_id": 1, "version": 1})
+    assert "only finance can activate" in refused.text
+
+
 def test_finance_shows_policy_text_next_to_rules(client):
+    act_as(client, "fede")
     page = client.get("/finance?policy_id=1")
     assert page.status_code == 200
     assert '<mark id="clause-R1">' in page.text
@@ -73,6 +113,7 @@ def test_finance_shows_policy_text_next_to_rules(client):
 
 
 def test_finance_review_flow_new_version_compile_approve_activate(client, caplog):
+    act_as(client, "fede")
     created = client.post(
         "/finance/versions", data={"policy_id": 1, "text": SALES_TEXT}
     )
@@ -111,6 +152,7 @@ def test_finance_review_flow_new_version_compile_approve_activate(client, caplog
 
 
 def test_finance_resolves_pending_expense(client):
+    act_as(client, "ana")
     client.post(
         "/employee",
         data=employee_form(
@@ -120,6 +162,7 @@ def test_finance_resolves_pending_expense(client):
             occurred_at="2026-11-18T12:00",
         ),
     )
+    act_as(client, "fede")
     finance = client.get("/finance")
     assert "Pending expenses" in finance.text and "USD 120.00" in finance.text
     resolved = client.post(
@@ -132,6 +175,36 @@ def test_finance_resolves_pending_expense(client):
         data={"resolution": "rejected", "policy_id": 1, "version": 1},
     )
     assert 'class="alert error"' in again.text
+    assert client.get("/expenses/1").json()["expense"]["resolved_by"] == "fede"
+
+
+def test_manager_resolves_team_pending_but_not_their_own(client):
+    pending = employee_form(
+        action="submit",
+        amount="120.00",
+        category="lodging",
+        occurred_at="2026-11-18T12:00",
+    )
+    act_as(client, "ana")
+    client.post("/employee", data=pending)  # expense #1
+    act_as(client, "bruno")
+    client.post("/employee", data={**pending, "idempotency_key": "bruno-1"})  # #2
+
+    page = client.get("/employee")
+    assert 'action="/employee/expenses/1/resolve"' in page.text
+    assert 'action="/employee/expenses/2/resolve"' not in page.text
+
+    own = client.post("/employee/expenses/2/resolve", data={"resolution": "approved"})
+    assert "separation of duties" in own.text
+    resolved = client.post(
+        "/employee/expenses/1/resolve", data={"resolution": "rejected"}
+    )
+    assert "Expense #1 rejected." in resolved.text
+    assert client.get("/expenses/1").json()["expense"]["resolved_by"] == "bruno"
+
+    act_as(client, "fede")
+    finance = client.get("/finance")
+    assert 'action="/finance/expenses/2/resolve"' in finance.text
 
 
 def test_highlight_escapes_html_and_marks_clauses():

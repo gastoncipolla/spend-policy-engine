@@ -2,24 +2,17 @@
 {% block title %}Employee · Covered{% endblock %}
 {% block content %}
 <h1>Will this be covered?</h1>
-{% if not current %}
-<p class="muted">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+{% if not actor %}
+{% if users %}
+<p class="muted">Choose who you are with the “act as” selector at the top (demo identities, no login).</p>
 {% else %}
-<form method="get" action="/employee" class="row" style="max-width:480px">
-  <div>
-    <label for="who" class="muted">Employee</label>
-    <select id="who" name="employee_id">
-      {% for e in employees %}<option value="{{ e.id }}" {% if e.id == current.id %}selected{% endif %}>{{ e.name }} ({{ e.id }})</option>{% endfor %}
-    </select>
-  </div>
-  <div style="flex:0 0 auto"><button class="secondary" type="submit">Switch</button></div>
-</form>
-
+<p class="muted">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+{% endif %}
+{% else %}
 <div class="grid" style="margin-top:20px">
   <section class="card">
-    <h3>Expense for {{ current.name }}</h3>
+    <h3>Expense for {{ actor.name }}</h3>
     <form method="post" action="/employee" class="stack">
-      <input type="hidden" name="employee_id" value="{{ current.id }}">
       <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
       <div class="row">
         <div>
@@ -57,6 +50,12 @@
     {% endif %}
   </section>
 </div>
+
+{% if is_manager(actor) %}
+<h2>Team pending</h2>
+{% set pending = team_pending %}{% set resolve_base = "/employee" %}
+{% include "_pending.html" %}
+{% endif %}
 
 <h2>History</h2>
 <div class="card">
