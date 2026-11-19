@@ -85,6 +85,7 @@ class PolicyVersion(_Record):
     created_at: datetime
     activated_by: str | None = None
     activated_at: datetime | None = None
+    compiling_since: datetime | None = None
 
 
 class StoredRule(_Record):

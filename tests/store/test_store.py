@@ -48,7 +48,11 @@ def _expense(amount: int, day: int, **overrides) -> ExpenseInput:
 def test_migrations_apply_once(conn):
     assert migrate(conn) == []
     names = [row["name"] for row in conn.execute("SELECT name FROM schema_migrations")]
-    assert names == ["001_initial.sql", "002_roles_and_audit.sql"]
+    assert names == [
+        "001_initial.sql",
+        "002_roles_and_audit.sql",
+        "003_compiling_since.sql",
+    ]
 
 
 def test_db_path_from_env_creates_folder(tmp_path, monkeypatch):

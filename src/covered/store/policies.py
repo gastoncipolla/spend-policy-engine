@@ -75,14 +75,18 @@ def set_version_status(
     compile_error: str | None = None,
     compile_meta: dict[str, Any] | None = None,
 ) -> None:
-    """Set the status; `compile_error`/`compile_meta` are overwritten (None clears them)."""
+    """Set the status; `compile_error`/`compile_meta` are overwritten (None clears them).
+
+    Entering `compiling` stamps `compiling_since` with now; any other status clears it.
+    """
     conn.execute(
-        "UPDATE policy_versions SET status = ?, compile_error = ?, compile_meta = ?"
-        " WHERE policy_id = ? AND version = ?",
+        "UPDATE policy_versions SET status = ?, compile_error = ?, compile_meta = ?,"
+        " compiling_since = ? WHERE policy_id = ? AND version = ?",
         (
             status,
             compile_error,
             json.dumps(compile_meta) if compile_meta is not None else None,
+            utc_now_iso() if status is VersionStatus.COMPILING else None,
             policy_id,
             version,
         ),
