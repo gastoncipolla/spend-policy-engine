@@ -20,6 +20,7 @@ from covered.store import employees, expenses, idempotency, policies, rules
 from covered.store.db import migrate, open_database, resolve_db_path, transaction
 from covered.store.records import (
     ExpenseStatus,
+    Role,
     RuleOrigin,
     RuleStatus,
     UncompilableStatus,
@@ -47,7 +48,7 @@ def _expense(amount: int, day: int, **overrides) -> ExpenseInput:
 def test_migrations_apply_once(conn):
     assert migrate(conn) == []
     names = [row["name"] for row in conn.execute("SELECT name FROM schema_migrations")]
-    assert names == ["001_initial.sql"]
+    assert names == ["001_initial.sql", "002_roles_and_audit.sql"]
 
 
 def test_db_path_from_env_creates_folder(tmp_path, monkeypatch):
@@ -105,8 +106,12 @@ def test_rule_and_uncompilable_round_trip(conn):
         flags=["conflict"],
     )
     assert rule.params == params and rule.flags == ["conflict"]
-    updated = rules.update_rule(conn, rule.id, status=RuleStatus.APPROVED)
+    assert rule.reviewed_by is None and rule.reviewed_at is None
+    updated = rules.update_rule(
+        conn, rule.id, status=RuleStatus.APPROVED, reviewed_by="fede"
+    )
     assert updated.status is RuleStatus.APPROVED
+    assert updated.reviewed_by == "fede" and updated.reviewed_at is not None
 
     item = rules.insert_uncompilable(
         conn,
@@ -119,9 +124,14 @@ def test_rule_and_uncompilable_round_trip(conn):
         status=UncompilableStatus.PROPOSED,
     )
     confirmed = rules.classify_uncompilable(
-        conn, item.id, categories=["lodging"], effect=UncompilableEffect.INFORMATIONAL
+        conn,
+        item.id,
+        categories=["lodging"],
+        effect=UncompilableEffect.INFORMATIONAL,
+        classified_by="fede",
     )
     assert confirmed.status is UncompilableStatus.CONFIRMED
+    assert confirmed.classified_by == "fede" and confirmed.classified_at
     assert confirmed.categories == ["lodging"]
 
 
@@ -164,11 +174,29 @@ def test_expense_and_decision_round_trip(conn):
     expenses.insert_decision(conn, decision)
     assert expenses.get_decision_for_expense(conn, stored.id) == decision
 
-    expenses.set_expense_status(conn, stored.id, ExpenseStatus.APPROVED)
+    expenses.resolve_expense(conn, stored.id, ExpenseStatus.APPROVED, "bruno")
     listed = expenses.list_expenses(
-        conn, employee_id="ana", status=ExpenseStatus.APPROVED
+        conn, employee_ids=["ana"], status=ExpenseStatus.APPROVED
     )
     assert [item.id for item in listed] == [stored.id]
+    assert listed[0].resolved_by == "bruno" and listed[0].resolved_at is not None
+    assert expenses.list_expenses(conn, employee_ids=[]) == []
+
+
+def test_employee_roles_manager_and_token(conn):
+    employees.insert_employee(
+        conn, "bruno", "Bruno", None, roles=[Role.MANAGER, Role.EMPLOYEE], token="t-b"
+    )
+    employees.insert_employee(conn, "ana", "Ana", None, manager_id="bruno")
+    bruno = employees.get_employee_by_token(conn, "t-b")
+    assert bruno.roles == {Role.EMPLOYEE, Role.MANAGER}
+    assert bruno.model_dump(mode="json")["roles"] == ["employee", "manager"]
+    assert "token" not in bruno.model_dump()
+    ana = employees.get_employee(conn, "ana")
+    assert (ana.roles, ana.manager_id) == ({Role.EMPLOYEE}, "bruno")
+    assert employees.get_employee_by_token(conn, "nope") is None
+    with pytest.raises(sqlite3.IntegrityError):
+        employees.insert_employee(conn, "x", "X", None, manager_id="nobody")
 
 
 def test_idempotency_record_round_trip(conn):

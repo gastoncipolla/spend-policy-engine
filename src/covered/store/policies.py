@@ -89,6 +89,16 @@ def set_version_status(
     )
 
 
+def mark_activated(
+    conn: sqlite3.Connection, policy_id: int, version: int, activated_by: str
+) -> None:
+    conn.execute(
+        "UPDATE policy_versions SET activated_by = ?, activated_at = ?"
+        " WHERE policy_id = ? AND version = ?",
+        (activated_by, utc_now_iso(), policy_id, version),
+    )
+
+
 def retire_active_version(conn: sqlite3.Connection, policy_id: int) -> None:
     conn.execute(
         "UPDATE policy_versions SET status = ? WHERE policy_id = ? AND status = ?",

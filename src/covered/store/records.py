@@ -8,7 +8,7 @@ from datetime import datetime
 from enum import StrEnum
 from typing import Any
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict
+from pydantic import AwareDatetime, BaseModel, ConfigDict, field_serializer
 
 from covered.domain import Category, RuleParams, RuleType, UncompilableEffect
 
@@ -37,6 +37,12 @@ class UncompilableStatus(StrEnum):
     CONFIRMED = "confirmed"
 
 
+class Role(StrEnum):
+    EMPLOYEE = "employee"
+    MANAGER = "manager"
+    FINANCE = "finance"
+
+
 class ExpenseStatus(StrEnum):
     APPROVED = "approved"
     PENDING = "pending"
@@ -56,9 +62,17 @@ class Policy(_Record):
 
 
 class Employee(_Record):
+    """A user (SPEC §12a). The demo token is never part of the record."""
+
     id: str
     name: str
     policy_id: int | None
+    roles: frozenset[Role] = frozenset({Role.EMPLOYEE})
+    manager_id: str | None = None
+
+    @field_serializer("roles")
+    def _sorted_roles(self, roles: frozenset[Role]) -> list[str]:
+        return sorted(roles)
 
 
 class PolicyVersion(_Record):
@@ -69,6 +83,8 @@ class PolicyVersion(_Record):
     compile_error: str | None = None
     compile_meta: dict[str, Any] | None = None
     created_at: datetime
+    activated_by: str | None = None
+    activated_at: datetime | None = None
 
 
 class StoredRule(_Record):
@@ -81,6 +97,8 @@ class StoredRule(_Record):
     status: RuleStatus
     origin: RuleOrigin
     flags: list[str] = []
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
 
 
 class StoredUncompilable(_Record):
@@ -93,6 +111,8 @@ class StoredUncompilable(_Record):
     """Catalog category codes, or `["*"]`."""
     effect: UncompilableEffect
     status: UncompilableStatus
+    classified_by: str | None = None
+    classified_at: datetime | None = None
 
 
 class StoredExpense(_Record):
@@ -107,6 +127,8 @@ class StoredExpense(_Record):
     pre_approval_id: str | None
     status: ExpenseStatus
     created_at: AwareDatetime
+    resolved_by: str | None = None
+    resolved_at: AwareDatetime | None = None
 
 
 class IdempotencyRecord(_Record):

@@ -2,6 +2,7 @@
 
 import json
 import sqlite3
+from collections.abc import Collection
 from datetime import datetime
 
 from covered.domain import Category, Decision, ExpenseInput, PeriodTotals
@@ -10,7 +11,7 @@ from covered.store.records import ExpenseStatus, StoredExpense
 
 _EXPENSE_COLUMNS = (
     "id, employee_id, amount_minor, currency, category, merchant, occurred_at,"
-    " justification, pre_approval_id, status, created_at"
+    " justification, pre_approval_id, status, created_at, resolved_by, resolved_at"
 )
 
 
@@ -48,24 +49,33 @@ def get_expense(conn: sqlite3.Connection, expense_id: int) -> StoredExpense | No
 def list_expenses(
     conn: sqlite3.Connection,
     *,
-    employee_id: str | None = None,
+    employee_ids: Collection[str] | None = None,
     status: ExpenseStatus | None = None,
 ) -> list[StoredExpense]:
-    """Newest first, optionally filtered by employee and/or status."""
+    """Newest first. `employee_ids=None` means every employee."""
+    where, args = ["(? IS NULL OR status = ?)"], [status, status]
+    if employee_ids is not None:
+        ids = list(employee_ids)
+        where.append(f"employee_id IN ({', '.join('?' * len(ids))})")
+        args += ids
     rows = conn.execute(
-        f"SELECT {_EXPENSE_COLUMNS} FROM expenses"
-        " WHERE (:employee_id IS NULL OR employee_id = :employee_id)"
-        " AND (:status IS NULL OR status = :status)"
+        f"SELECT {_EXPENSE_COLUMNS} FROM expenses WHERE {' AND '.join(where)}"
         " ORDER BY occurred_at_utc DESC, id DESC",
-        {"employee_id": employee_id, "status": status},
+        args,
     )
     return [StoredExpense(**row) for row in rows]
 
 
-def set_expense_status(
-    conn: sqlite3.Connection, expense_id: int, status: ExpenseStatus
+def resolve_expense(
+    conn: sqlite3.Connection,
+    expense_id: int,
+    status: ExpenseStatus,
+    resolved_by: str,
 ) -> None:
-    conn.execute("UPDATE expenses SET status = ? WHERE id = ?", (status, expense_id))
+    conn.execute(
+        "UPDATE expenses SET status = ?, resolved_by = ?, resolved_at = ? WHERE id = ?",
+        (status, resolved_by, utc_now_iso(), expense_id),
+    )
 
 
 def period_totals(

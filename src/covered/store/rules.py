@@ -7,6 +7,7 @@ from collections.abc import Sequence
 from pydantic import TypeAdapter
 
 from covered.domain import RuleParams, UncompilableEffect
+from covered.store.db import utc_now_iso
 from covered.store.records import (
     RuleOrigin,
     RuleStatus,
@@ -31,10 +32,12 @@ def insert_rule(
     status: RuleStatus,
     origin: RuleOrigin,
     flags: Sequence[str] = (),
+    reviewed_by: str | None = None,
 ) -> StoredRule:
+    """`reviewed_by` is set when a person writes the rule (manual rules)."""
     cursor = conn.execute(
-        "INSERT INTO rules (policy_id, version, type, params, clause, status, origin, flags)"
-        " VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO rules (policy_id, version, type, params, clause, status, origin,"
+        " flags, reviewed_by, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             policy_id,
             version,
@@ -44,6 +47,8 @@ def insert_rule(
             status,
             origin,
             json.dumps(list(flags)),
+            reviewed_by,
+            utc_now_iso() if reviewed_by else None,
         ),
     )
     return get_rule(conn, cursor.lastrowid)
@@ -70,7 +75,13 @@ def update_rule(
     *,
     status: RuleStatus | None = None,
     params: RuleParams | None = None,
+    reviewed_by: str,
 ) -> StoredRule:
+    """Change status and/or params, recording who reviewed it and when."""
+    conn.execute(
+        "UPDATE rules SET reviewed_by = ?, reviewed_at = ? WHERE id = ?",
+        (reviewed_by, utc_now_iso(), rule_id),
+    )
     if status is not None:
         conn.execute("UPDATE rules SET status = ? WHERE id = ?", (status, rule_id))
     if params is not None:
@@ -101,6 +112,8 @@ def _rule(row: sqlite3.Row) -> StoredRule:
         status=row["status"],
         origin=row["origin"],
         flags=json.loads(row["flags"]),
+        reviewed_by=row["reviewed_by"],
+        reviewed_at=row["reviewed_at"],
     )
 
 
@@ -158,11 +171,20 @@ def classify_uncompilable(
     *,
     categories: Sequence[str],
     effect: UncompilableEffect,
+    classified_by: str,
 ) -> StoredUncompilable:
-    """Store finance's classification and mark the clause confirmed."""
+    """Store finance's classification, mark the clause confirmed, record who/when."""
     conn.execute(
-        "UPDATE uncompilable SET categories = ?, effect = ?, status = ? WHERE id = ?",
-        (json.dumps(list(categories)), effect, UncompilableStatus.CONFIRMED, item_id),
+        "UPDATE uncompilable SET categories = ?, effect = ?, status = ?,"
+        " classified_by = ?, classified_at = ? WHERE id = ?",
+        (
+            json.dumps(list(categories)),
+            effect,
+            UncompilableStatus.CONFIRMED,
+            classified_by,
+            utc_now_iso(),
+            item_id,
+        ),
     )
     return get_uncompilable(conn, item_id)
 
