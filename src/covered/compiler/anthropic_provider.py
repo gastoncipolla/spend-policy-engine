@@ -31,6 +31,28 @@ PRICES_PER_MTOK: dict[str, tuple[Decimal, Decimal]] = {
 """USD per million (input, output) tokens. Unknown models get `cost_usd=None`."""
 
 
+def output_schema() -> dict[str, Any]:
+    """JSON schema for structured outputs, with `type` required and first in every rule.
+
+    Structured outputs generate properties in schema order. If `type` comes last
+    (or is optional because it has a default), the model must commit to a rule
+    variant before naming it, and in practice it mixed variants: a meals limit
+    came back as a pre-approval threshold. Naming the type first fixes that.
+    """
+    schema = anthropic.transform_schema(CompilationResult)
+    for definition in schema.get("$defs", {}).values():
+        properties = definition.get("properties", {})
+        if "type" not in properties or "const" not in properties["type"]:
+            continue
+        definition["properties"] = {
+            "type": properties["type"],
+            **{name: value for name, value in properties.items() if name != "type"},
+        }
+        required = [name for name in definition.get("required", []) if name != "type"]
+        definition["required"] = ["type", *required]
+    return schema
+
+
 class AnthropicProvider:
     name = "anthropic"
 
@@ -57,7 +79,7 @@ class AnthropicProvider:
                 output_config={
                     "format": {
                         "type": "json_schema",
-                        "schema": anthropic.transform_schema(CompilationResult),
+                        "schema": output_schema(),
                     }
                 },
             )

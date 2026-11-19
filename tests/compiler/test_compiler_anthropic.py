@@ -147,3 +147,18 @@ def test_get_provider_rejects_bad_configuration():
         get_provider({"COVERED_PROVIDER": "anthropic"})
     with pytest.raises(InvalidInputError):
         get_provider({"COVERED_PROVIDER": "openai"})
+
+
+def test_output_schema_names_the_rule_type_first_and_requires_it():
+    # Regression: with `type` optional and last, the real model mixed rule variants.
+    from covered.compiler.anthropic_provider import output_schema
+
+    variants = [
+        definition
+        for definition in output_schema()["$defs"].values()
+        if "const" in definition.get("properties", {}).get("type", {})
+    ]
+    assert len(variants) == 5
+    for definition in variants:
+        assert next(iter(definition["properties"])) == "type"
+        assert definition["required"][0] == "type"
