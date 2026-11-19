@@ -59,6 +59,8 @@ def test_unknown_route_and_resources_use_the_error_envelope(client):
         {"amount_minor": 60.5},
         {"amount_minor": "6000"},
         {"amount_minor": 0},
+        {"amount_minor": 10**30},
+        {"amount_minor": 10**12 + 1},
         {"currency": "EUR"},
         {"category": "spa"},
         {"occurred_at": "2026-11-18T10:00:00"},
@@ -122,6 +124,8 @@ def test_rule_params_are_validated(client, draft):
     rule_id = detail["rules"][0]["id"]
     bad = {"params": {"type": "max_amount", "category": "meals", "amount_minor": -1}}
     _assert_error(client.patch(f"/rules/{rule_id}", json=bad), 422, "validation_error")
+    huge = {"params": {**bad["params"], "amount_minor": 10**30}}
+    _assert_error(client.patch(f"/rules/{rule_id}", json=huge), 422, "validation_error")
     item_id = detail["uncompilable"][0]["id"]
     bad_item = {"categories": ["spa"], "effect": "informational"}
     _assert_error(
@@ -189,6 +193,11 @@ def test_check_returns_a_decision_and_stores_nothing(client, active):
     assert decision["outcome"] == "approved"
     assert decision["expense_id"] is None
     assert client.get("/expenses", params={"employee_id": "ana"}).json() == []
+
+
+def test_submit_with_huge_amount_is_a_validation_error(client, active):
+    response = _submit(client, "key-huge", amount_minor=10**30)
+    _assert_error(response, 422, "validation_error")
 
 
 def test_submit_requires_idempotency_key(client, active):

@@ -15,12 +15,19 @@ CURRENCY = "USD"
 MINOR_UNIT_DIGITS = 2
 _MINOR_PER_MAJOR = 10**MINOR_UNIT_DIGITS
 
+# SPEC-QUESTION: the spec sets no upper bound on amounts. JSON ints are unbounded
+# but SQLite INTEGER is 64-bit, so a huge amount would crash at insert (or in a
+# SUM). We cap at USD 10 billion: far above any real expense or limit, and far
+# below 2**63 even when summed over millions of expenses.
+MAX_AMOUNT_MINOR = 10**12
+"""Largest accepted amount in minor units (inclusive)."""
+
 
 def parse_amount(value: str | Decimal | int) -> int:
     """Convert a human amount in major units (e.g. "80.00") to positive minor units (8000).
 
-    Raises `InvalidAmountError` for floats, non-numbers, non-positive amounts and
-    amounts with more than two decimals.
+    Raises `InvalidAmountError` for floats, non-numbers, non-positive amounts,
+    amounts above `MAX_AMOUNT_MINOR` and amounts with more than two decimals.
     """
     if isinstance(value, bool | float):
         raise InvalidAmountError(
@@ -39,6 +46,8 @@ def parse_amount(value: str | Decimal | int) -> int:
         )
     if minor <= 0:
         raise InvalidAmountError(f"Amount must be greater than zero: {value!r}")
+    if minor > MAX_AMOUNT_MINOR:
+        raise InvalidAmountError(f"Amount is too large: {value!r}")
     return int(minor)
 
 

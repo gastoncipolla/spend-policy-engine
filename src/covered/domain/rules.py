@@ -1,7 +1,7 @@
 """The five rule types (SPEC §3) as a Pydantic discriminated union.
 
 `RuleParams` is the union; `type` is the discriminator. Every params model is
-frozen, forbids unknown fields, requires amounts > 0 and categories from the
+frozen, forbids unknown fields, requires amounts > 0 (and <= MAX_AMOUNT_MINOR) and categories from the
 catalog. `PolicyRule` is an approved rule as the engine sees it.
 """
 
@@ -12,9 +12,10 @@ from typing import Annotated, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from covered.domain.categories import Category
+from covered.domain.money import MAX_AMOUNT_MINOR
 
-PositiveMinor = Annotated[int, Field(strict=True, gt=0)]
-"""Strictly positive amount in minor units (floats and bools are rejected)."""
+PositiveMinor = Annotated[int, Field(strict=True, gt=0, le=MAX_AMOUNT_MINOR)]
+"""Positive amount in minor units, capped at `MAX_AMOUNT_MINOR` (floats and bools are rejected)."""
 
 CategoryList = Annotated[list[Category], Field(min_length=1)]
 """Non-empty list of catalog categories. `None` is used for "all categories"."""

@@ -4,6 +4,7 @@ import pytest
 
 from covered.domain.errors import InvalidAmountError, UnsupportedCurrencyError
 from covered.domain.money import (
+    MAX_AMOUNT_MINOR,
     ensure_supported_currency,
     format_minor,
     format_money,
@@ -28,7 +29,20 @@ def test_parse_amount_converts_to_minor_units(raw, expected):
 
 
 @pytest.mark.parametrize(
-    "raw", ["80.001", "0", "-5", "abc", "", "NaN", "Infinity", 80.0, True]
+    "raw",
+    [
+        "80.001",
+        "0",
+        "-5",
+        "abc",
+        "",
+        "NaN",
+        "Infinity",
+        80.0,
+        True,
+        "1e30",
+        "10000000000.01",
+    ],
 )
 def test_parse_amount_rejects_invalid_input(raw):
     with pytest.raises(InvalidAmountError):
@@ -60,3 +74,7 @@ def test_only_company_currency_is_supported():
     assert ensure_supported_currency("USD") == "USD"
     with pytest.raises(UnsupportedCurrencyError):
         ensure_supported_currency("EUR")
+
+
+def test_parse_amount_accepts_the_maximum():
+    assert parse_amount("10000000000.00") == MAX_AMOUNT_MINOR
