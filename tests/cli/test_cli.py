@@ -1,5 +1,9 @@
 """The `covered` CLI wraps the services (SPEC §8)."""
 
+import re
+
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
 SUNDAY_LATE = "2026-11-22T23:30"  # no offset: company time
 
 
@@ -157,5 +161,6 @@ def test_finance_capable_commands_require_an_explicit_user(seeded):
         ("policy", "activate", "sales"),
     ):
         result = seeded(*args)
-        assert result.exit_code != 0
-        assert "--as" in result.output
+        # Exit code 2 is Click's usage error; strip colors (CI terminals render them).
+        assert result.exit_code == 2
+        assert "Missing option '--as'" in ANSI.sub("", result.output)
