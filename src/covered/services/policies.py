@@ -2,6 +2,10 @@
 
 Active and retired versions are immutable: their rules and uncompilable
 clauses never change, so stored decisions stay reproducible.
+
+Every use case takes the acting user (`actor`): reading is limited to the
+actor's own policy (finance reads all), and every write is finance-only and
+records who did it (SPEC §12a).
 """
 
 import sqlite3
@@ -24,6 +28,8 @@ from covered.domain.errors import (
     NotFoundError,
     VersionImmutableError,
 )
+from covered.services import authz
+from covered.services.authz import Actor
 from covered.services.events import log_event
 from covered.store import policies as policy_store
 from covered.store import rules as rule_store
@@ -68,7 +74,8 @@ class VersionDetail(PolicyVersion):
 # Policies and versions
 
 
-def create_policy(conn: sqlite3.Connection, name: str) -> Policy:
+def create_policy(conn: sqlite3.Connection, actor: Actor, name: str) -> Policy:
+    authz.require_finance(actor, "create policies")
     name = name.strip()
     if not name:
         raise InvalidInputError("policy name must not be empty")
@@ -76,10 +83,17 @@ def create_policy(conn: sqlite3.Connection, name: str) -> Policy:
         return policy_store.insert_policy(conn, name)
 
 
-def list_policies(conn: sqlite3.Connection) -> list[PolicySummary]:
+def list_policies(conn: sqlite3.Connection, actor: Actor) -> list[PolicySummary]:
+    """Finance: every policy and version. Others: their own policy's active version."""
     summaries = []
     for policy in policy_store.list_policies(conn):
-        versions = policy_store.list_versions(conn, policy.id)
+        if not authz.can_read_policy(actor, policy.id):
+            continue
+        versions = [
+            v
+            for v in policy_store.list_versions(conn, policy.id)
+            if _can_read_version(actor, v)
+        ]
         active = [v.version for v in versions if v.status is VersionStatus.ACTIVE]
         summaries.append(
             PolicySummary(
@@ -95,8 +109,9 @@ def list_policies(conn: sqlite3.Connection) -> list[PolicySummary]:
 
 
 def create_version(
-    conn: sqlite3.Connection, policy_id: int, text: str
+    conn: sqlite3.Connection, actor: Actor, policy_id: int, text: str
 ) -> PolicyVersion:
+    authz.require_finance(actor, "create policy versions")
     if not text.strip():
         raise InvalidInputError("policy text must not be empty")
     with transaction(conn, immediate=True):
@@ -106,10 +121,23 @@ def create_version(
 
 
 def get_version_detail(
-    conn: sqlite3.Connection, policy_id: int, version: int
+    conn: sqlite3.Connection, actor: Actor, policy_id: int, version: int
 ) -> VersionDetail:
+    """A version the actor may read; anything else is 404 (existence not revealed)."""
     with transaction(conn):
-        return _detail(conn, require_version(conn, policy_id, version))
+        stored = policy_store.get_version(conn, policy_id, version)
+        if stored is None or not _can_read_version(actor, stored):
+            raise NotFoundError(f"policy {policy_id} version {version} not found")
+        return _detail(conn, stored)
+
+
+def _can_read_version(actor: Actor, version: PolicyVersion) -> bool:
+    # SPEC-QUESTION: "own policy, read-only" does not say which versions. Drafts
+    # are work in progress, so non-finance users only read the active version.
+    return authz.is_finance(actor) or (
+        authz.can_read_policy(actor, version.policy_id)
+        and version.status is VersionStatus.ACTIVE
+    )
 
 
 # Finance review
@@ -117,12 +145,14 @@ def get_version_detail(
 
 def add_manual_rule(
     conn: sqlite3.Connection,
+    actor: Actor,
     policy_id: int,
     version: int,
     params: RuleParams,
     clause: str,
 ) -> StoredRule:
-    """A rule written by finance: origin=manual, status=approved."""
+    """A rule written by finance: origin=manual, status=approved, reviewed by its author."""
+    authz.require_finance(actor, "add rules")
     with transaction(conn, immediate=True):
         stored_version = require_editable(conn, policy_id, version)
         # SPEC-QUESTION: the spec does not say where a manual rule's clause comes
@@ -140,17 +170,20 @@ def add_manual_rule(
             clause=clause.strip(),
             status=RuleStatus.APPROVED,
             origin=RuleOrigin.MANUAL,
+            reviewed_by=actor.id,
         )
 
 
 def update_rule(
     conn: sqlite3.Connection,
+    actor: Actor,
     rule_id: int,
     *,
     status: RuleStatus | None = None,
     params: RuleParams | None = None,
 ) -> StoredRule:
     """Approve/reject/edit a rule of a non-active version. Flags are kept as they are."""
+    authz.require_finance(actor, "review rules")
     if status is None and params is None:
         raise InvalidInputError("nothing to update: pass status and/or params")
     with transaction(conn, immediate=True):
@@ -158,17 +191,21 @@ def update_rule(
         if rule is None:
             raise NotFoundError(f"rule {rule_id} not found")
         require_editable(conn, rule.policy_id, rule.version)
-        return rule_store.update_rule(conn, rule_id, status=status, params=params)
+        return rule_store.update_rule(
+            conn, rule_id, status=status, params=params, reviewed_by=actor.id
+        )
 
 
 def classify_uncompilable(
     conn: sqlite3.Connection,
+    actor: Actor,
     item_id: int,
     *,
     categories: list[str],
     effect: UncompilableEffect,
 ) -> StoredUncompilable:
     """Finance sets categories and effect; the clause becomes confirmed."""
+    authz.require_finance(actor, "classify uncompilable clauses")
     with transaction(conn, immediate=True):
         item = rule_store.get_uncompilable(conn, item_id)
         if item is None:
@@ -183,7 +220,7 @@ def classify_uncompilable(
             effect=effect,
         )
         return rule_store.classify_uncompilable(
-            conn, item_id, categories=categories, effect=effect
+            conn, item_id, categories=categories, effect=effect, classified_by=actor.id
         )
 
 
@@ -191,9 +228,10 @@ def classify_uncompilable(
 
 
 def activate_version(
-    conn: sqlite3.Connection, policy_id: int, version: int
+    conn: sqlite3.Connection, actor: Actor, policy_id: int, version: int
 ) -> VersionDetail:
     """SPEC §5 step 4: block on pending review or approved conflicts, then swap active."""
+    authz.require_finance(actor, "activate policy versions")
     with transaction(conn, immediate=True):
         stored_version = require_editable(conn, policy_id, version)
         if stored_version.status is VersionStatus.COMPILE_FAILED:
@@ -209,11 +247,13 @@ def activate_version(
             VersionStatus.ACTIVE,
             compile_meta=stored_version.compile_meta,
         )
+        policy_store.mark_activated(conn, policy_id, version, actor.id)
         detail = _detail(conn, policy_store.get_version(conn, policy_id, version))
     log_event(
         "policy_activated",
         policy_id=policy_id,
         version=version,
+        activated_by=actor.id,
         uncovered_categories=detail.uncovered_categories,
     )
     return detail

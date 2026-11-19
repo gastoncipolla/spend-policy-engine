@@ -1,6 +1,7 @@
 """Use cases: check, submit, list and resolve expenses (SPEC §6).
 
-Submit evaluates and inserts inside one `BEGIN IMMEDIATE` transaction, so two
+Every use case takes the acting user (`actor`) and enforces SPEC §12a through
+`covered.services.authz`. Submit evaluates and inserts inside one `BEGIN IMMEDIATE` transaction, so two
 concurrent submits cannot both consume the same remaining period limit.
 """
 
@@ -21,6 +22,8 @@ from covered.domain.errors import (
     NotFoundError,
 )
 from covered.engine import evaluate, period_window
+from covered.services import authz
+from covered.services.authz import Actor
 from covered.services.config import COMPANY_TZ, utc_now
 from covered.services.events import log_event
 from covered.services.policies import active_policy_for
@@ -53,9 +56,14 @@ class SubmitResult:
 
 
 def check_expense(
-    conn: sqlite3.Connection, expense: ExpenseInput, *, now: datetime | None = None
+    conn: sqlite3.Connection,
+    actor: Actor,
+    expense: ExpenseInput,
+    *,
+    now: datetime | None = None,
 ) -> Decision:
     """Simulate: evaluate without storing anything or consuming any limit."""
+    authz.require_own_expense(actor, expense.employee_id)
     with transaction(conn):
         decision = _evaluate(conn, expense, now or utc_now())
     _log_decision(decision, kind="check")
@@ -64,11 +72,13 @@ def check_expense(
 
 def submit_expense(
     conn: sqlite3.Connection,
+    actor: Actor,
     expense: ExpenseInput,
     idempotency_key: str,
     *,
     now: datetime | None = None,
 ) -> SubmitResult:
+    authz.require_own_expense(actor, expense.employee_id)
     key = idempotency_key.strip()
     if not key:
         raise InvalidInputError("the Idempotency-Key header must not be empty")
@@ -100,39 +110,65 @@ def submit_expense(
 
 def list_expenses(
     conn: sqlite3.Connection,
+    actor: Actor,
     *,
     employee_id: str | None = None,
     status: ExpenseStatus | None = None,
 ) -> list[ExpenseWithDecision]:
+    """Only what the actor may see: own, own + team (manager), all (finance).
+
+    Filtering by an employee the actor may not see returns an empty list.
+    """
     with transaction(conn):
+        visible = _visible_employee_ids(conn, actor)  # None: everyone
+        if employee_id is not None:
+            allowed = visible is None or employee_id in visible
+            visible = [employee_id] if allowed else []
         return [
             _with_decision(conn, expense)
             for expense in expense_store.list_expenses(
-                conn, employee_id=employee_id, status=status
+                conn, employee_ids=visible, status=status
             )
         ]
 
 
-def resolve_expense(
-    conn: sqlite3.Connection, expense_id: int, resolution: ExpenseStatus
+def get_expense(
+    conn: sqlite3.Connection, actor: Actor, expense_id: int
 ) -> ExpenseWithDecision:
-    """pending → approved | rejected. Anything else is an invalid transition.
+    """One expense the actor may see; anything else is 404 (existence not revealed)."""
+    with transaction(conn):
+        return _with_decision(conn, _visible_expense(conn, actor, expense_id))
+
+
+def resolve_expense(
+    conn: sqlite3.Connection,
+    actor: Actor,
+    expense_id: int,
+    resolution: ExpenseStatus,
+) -> ExpenseWithDecision:
+    """pending → approved | rejected, by the owner's manager or finance, never the owner.
 
     The stored decision is left unchanged: it records what the policy said.
     """
     if resolution is ExpenseStatus.PENDING:
         raise InvalidInputError("resolution must be approved or rejected")
     with transaction(conn, immediate=True):
-        expense = expense_store.get_expense(conn, expense_id)
-        if expense is None:
-            raise NotFoundError(f"expense {expense_id} not found")
+        expense = _visible_expense(conn, actor, expense_id)
+        authz.require_can_resolve(
+            actor, employee_store.get_employee(conn, expense.employee_id)
+        )
         if expense.status is not ExpenseStatus.PENDING:
             raise InvalidTransitionError(
                 f"expense {expense_id} is {expense.status}; only pending expenses can be resolved"
             )
-        expense_store.set_expense_status(conn, expense_id, resolution)
+        expense_store.resolve_expense(conn, expense_id, resolution, actor.id)
         resolved = _with_decision(conn, expense_store.get_expense(conn, expense_id))
-    log_event("expense_resolved", expense_id=expense_id, resolution=resolution)
+    log_event(
+        "expense_resolved",
+        expense_id=expense_id,
+        resolution=resolution,
+        resolved_by=actor.id,
+    )
     return resolved
 
 
@@ -160,6 +196,26 @@ def _history(conn: sqlite3.Connection, expense: ExpenseInput) -> PeriodHistory:
             conn, expense.employee_id, expense.category, window.start, window.end
         )
     return PeriodHistory(**totals)
+
+
+def _visible_employee_ids(conn: sqlite3.Connection, actor: Actor) -> list[str] | None:
+    if authz.is_finance(actor):
+        return None
+    return [
+        employee.id
+        for employee in employee_store.list_employees(conn)
+        if authz.can_see_employee(actor, employee)
+    ]
+
+
+def _visible_expense(
+    conn: sqlite3.Connection, actor: Actor, expense_id: int
+) -> StoredExpense:
+    expense = expense_store.get_expense(conn, expense_id)
+    owner = expense and employee_store.get_employee(conn, expense.employee_id)
+    if owner is None or not authz.can_see_employee(actor, owner):
+        raise NotFoundError(f"expense {expense_id} not found")
+    return expense
 
 
 def _with_decision(

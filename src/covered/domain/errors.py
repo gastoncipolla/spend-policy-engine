@@ -57,3 +57,15 @@ class IdempotencyKeyReusedError(CoveredError):
 
 class InvalidTransitionError(CoveredError):
     code = "invalid_transition"
+
+
+class UnauthenticatedError(CoveredError):
+    """No credentials, or credentials that match no user."""
+
+    code = "unauthenticated"
+
+
+class ForbiddenError(CoveredError):
+    """The caller is known but may not do this."""
+
+    code = "forbidden"

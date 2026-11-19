@@ -1,7 +1,7 @@
 """Fixtures for service tests: a file-backed DB and an active sample policy."""
 
 import pytest
-from service_builders import POLICY_TEXT, SAMPLE_RULES
+from service_builders import FINANCE, POLICY_TEXT, SAMPLE_RULES
 
 from covered.services import employees, policies
 from covered.store.db import open_database
@@ -22,10 +22,16 @@ def conn(db_path):
 @pytest.fixture
 def sales(conn):
     """Policy "Sales" with version 1 active (manual rules) and employee "ana"."""
-    policy = policies.create_policy(conn, "Sales")
-    policies.create_version(conn, policy.id, POLICY_TEXT)
+    policy = policies.create_policy(conn, FINANCE, "Sales")
+    policies.create_version(conn, FINANCE, policy.id, POLICY_TEXT)
     for params, clause in SAMPLE_RULES:
-        policies.add_manual_rule(conn, policy.id, 1, params, clause)
-    policies.activate_version(conn, policy.id, 1)
-    employees.create_employee(conn, "ana", "Ana", policy.id)
+        policies.add_manual_rule(conn, FINANCE, policy.id, 1, params, clause)
+    policies.activate_version(conn, FINANCE, policy.id, 1)
+    employees.create_employee(conn, "ana", "Ana", policy.id, token="t-ana")
     return policy
+
+
+@pytest.fixture
+def ana(conn, sales):
+    """The actor "ana" (plain employee on the Sales policy)."""
+    return employees.act_as(conn, "ana")

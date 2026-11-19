@@ -12,6 +12,15 @@ from covered.domain import (
     PreApprovalThresholdParams,
     ProhibitedCategoryParams,
 )
+from covered.store.records import Employee, Role
+
+FINANCE = Employee(
+    id="fede",
+    name="Fede",
+    policy_id=None,
+    roles=frozenset({Role.EMPLOYEE, Role.FINANCE}),
+)
+"""A finance actor for policy administration (audit columns have no foreign key)."""
 
 TZ = ZoneInfo("America/Argentina/Buenos_Aires")
 

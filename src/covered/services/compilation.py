@@ -12,6 +12,8 @@ from typing import Any, Protocol
 
 from covered.domain import ALL_CATEGORIES, Category, RuleParams, UncompilableEffect
 from covered.domain.errors import CoveredError, InvalidInputError
+from covered.services import authz
+from covered.services.authz import Actor
 from covered.services.events import log_event
 from covered.services.policies import (
     VersionDetail,
@@ -79,10 +81,15 @@ def unconfigured_compiler(text: str) -> CompilationOutcome:
 
 
 def compile_version(
-    conn: sqlite3.Connection, policy_id: int, version: int, compiler: Compiler
+    conn: sqlite3.Connection,
+    actor: Actor,
+    policy_id: int,
+    version: int,
+    compiler: Compiler,
 ) -> VersionDetail:
-    """Compile one version. A compile failure is not raised: it is stored on the
-    version (`compile_failed` + `compile_error`) and returned in the detail."""
+    """Compile one version (finance only). A compile failure is not raised: it is
+    stored on the version (`compile_failed` + `compile_error`) and returned."""
+    authz.require_finance(actor, "compile policies")
     text = _acquire_lock(conn, policy_id, version)
     try:
         outcome = compiler(text)
@@ -116,7 +123,7 @@ def compile_version(
         error=getattr(outcome, "error", None),
         **(outcome.meta or {}),  # provider, model, prompt_version, tokens, cost
     )
-    return get_version_detail(conn, policy_id, version)
+    return get_version_detail(conn, actor, policy_id, version)
 
 
 def _acquire_lock(conn: sqlite3.Connection, policy_id: int, version: int) -> str:
