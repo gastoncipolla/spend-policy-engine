@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Employee · Covered{% endblock %}
+{% block content %}
+<h1>Will this be covered?</h1>
+{% if not current %}
+<p class="muted">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+{% else %}
+<form method="get" action="/employee" class="row" style="max-width:480px">
+  <div>
+    <label for="who" class="muted">Employee</label>
+    <select id="who" name="employee_id">
+      {% for e in employees %}<option value="{{ e.id }}" {% if e.id == current.id %}selected{% endif %}>{{ e.name }} ({{ e.id }})</option>{% endfor %}
+    </select>
+  </div>
+  <div style="flex:0 0 auto"><button class="secondary" type="submit">Switch</button></div>
+</form>
+
+<div class="grid" style="margin-top:20px">
+  <section class="card">
+    <h3>Expense for {{ current.name }}</h3>
+    <form method="post" action="/employee" class="stack">
+      <input type="hidden" name="employee_id" value="{{ current.id }}">
+      <input type="hidden" name="idempotency_key" value="{{ idempotency_key }}">
+      <div class="row">
+        <div>
+          <label for="amount">Amount (USD)</label>
+          <input id="amount" name="amount" inputmode="decimal" placeholder="80.00" required value="{{ form.amount or '' }}">
+        </div>
+        <div>
+          <label for="category">Category</label>
+          <select id="category" name="category">
+            {% for code, name in categories.items() %}<option value="{{ code }}" {% if code == form.category %}selected{% endif %}>{{ name }}</option>{% endfor %}
+          </select>
+        </div>
+      </div>
+      <label for="occurred_at">When (company time, Buenos Aires)</label>
+      <input id="occurred_at" type="datetime-local" name="occurred_at" required value="{{ form.occurred_at or '' }}">
+      <label for="merchant">Merchant</label>
+      <input id="merchant" name="merchant" value="{{ form.merchant or '' }}">
+      <label for="justification">Justification <span class="muted">(optional)</span></label>
+      <input id="justification" name="justification" value="{{ form.justification or '' }}">
+      <label for="pre_approval_id">Pre-approval id <span class="muted">(optional)</span></label>
+      <input id="pre_approval_id" name="pre_approval_id" value="{{ form.pre_approval_id or '' }}">
+      <div class="actions">
+        <button type="submit" name="action" value="check">Will this be covered?</button>
+        <button type="submit" name="action" value="submit" class="secondary">Submit expense</button>
+      </div>
+    </form>
+  </section>
+
+  <section>
+    {% if decision %}
+      {% if submitted %}<p><strong>Submitted as expense #{{ submitted }}.</strong></p>{% else %}<p class="muted">Check only: nothing was stored.</p>{% endif %}
+      {% include "_decision.html" %}
+    {% else %}
+      <div class="card muted">Fill in the expense and press <em>Will this be covered?</em> to see the outcome, every reason and the policy clause behind it.</div>
+    {% endif %}
+  </section>
+</div>
+
+<h2>History</h2>
+<div class="card">
+  {% if history %}
+  <table>
+    <tr><th>#</th><th>When</th><th>Category</th><th>Merchant</th><th class="num">Amount</th><th>Status</th><th>Reasons</th></tr>
+    {% for item in history %}
+    <tr>
+      <td>{{ item.expense.id }}</td>
+      <td>{{ item.expense.occurred_at | local_time }}</td>
+      <td>{{ categories[item.expense.category] }}</td>
+      <td>{{ item.expense.merchant or "" }}</td>
+      <td class="num">{{ item.expense.amount_minor | money }}</td>
+      <td><span class="badge {{ item.expense.status }}">{{ item.expense.status }}</span></td>
+      <td>{% for r in item.decision.reasons %}<div>{{ r.message }}</div>{% endfor %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}<p class="muted">No submitted expenses yet.</p>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

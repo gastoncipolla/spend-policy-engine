@@ -1,0 +1,25 @@
+<section class="card decision {{ decision.outcome }}">
+  <span class="badge big {{ decision.outcome }}">{{ outcome_label(decision.outcome) }}</span>
+  <span class="muted">&nbsp;policy {{ decision.policy_id }}, version {{ decision.policy_version }}</span>
+  {% if decision.reasons or decision.warnings %}
+  <ul class="reasons">
+    {% for reason in decision.reasons %}
+    <li>
+      <span class="badge {{ reason.outcome }}">{{ outcome_label(reason.outcome) }}</span>
+      {{ reason.message }}
+      <span class="source">{% if reason.rule_id %}rule R{{ reason.rule_id }}{% elif reason.uncompilable_id %}clause U{{ reason.uncompilable_id }}{% else %}coverage check{% endif %}</span>
+      {% if reason.clause %}<blockquote>“{{ reason.clause }}”</blockquote>{% endif %}
+    </li>
+    {% endfor %}
+    {% for warning in decision.warnings %}
+    <li>
+      <span class="badge anthropic">Note</span> {{ warning.message }}
+      <span class="source">clause U{{ warning.uncompilable_id }}</span>
+      <blockquote>“{{ warning.clause }}”</blockquote>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Every rule passed.</p>
+  {% endif %}
+</section>

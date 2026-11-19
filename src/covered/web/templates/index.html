@@ -1,0 +1,35 @@
+{% extends "base.html" %}
+{% block content %}
+<h1>Will this expense be covered?</h1>
+<p class="muted">Written expense policies, compiled into explicit rules that finance approves.
+Every expense is evaluated deterministically and every outcome cites the policy clause behind it.</p>
+
+<div class="tiles">
+  <a class="card" href="/employee">
+    <h3>Employee view →</h3>
+    <p class="muted">Check an expense before you spend, submit it, and see your history.</p>
+  </a>
+  <a class="card" href="/finance">
+    <h3>Finance view →</h3>
+    <p class="muted">Review compiled rules next to the policy text, activate versions, resolve pending expenses.</p>
+  </a>
+</div>
+
+<h2>Policies</h2>
+<div class="card">
+  {% if policies %}
+  <table>
+    <tr><th>Policy</th><th>Active version</th><th>Employees</th></tr>
+    {% for policy in policies %}
+    <tr>
+      <td><a href="/finance?policy_id={{ policy.id }}">{{ policy.name }}</a></td>
+      <td>{% if policy.active_version %}<span class="badge active">v{{ policy.active_version }}</span>{% else %}<span class="badge neutral">none</span>{% endif %}</td>
+      <td>{% for e in employees if e.policy_id == policy.id %}<a href="/employee?employee_id={{ e.id }}">{{ e.name }}</a>{% if not loop.last %}, {% endif %}{% endfor %}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="muted">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+  {% endif %}
+</div>
+{% endblock %}
