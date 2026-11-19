@@ -11,9 +11,9 @@ from covered.cli.context import database
 from covered.cli.inputs import build_expense
 from covered.cli.render import print_decision
 from covered.domain import Decision
-from covered.services import expenses
+from covered.services import employees, expenses
 from covered.services.events import configure_logging
-from covered.services.seed import reset_database
+from covered.services.seed import DEMO_USERS, reset_database
 from covered.services.seed import seed as seed_demo
 from covered.store.db import resolve_db_path
 
@@ -33,6 +33,13 @@ At = Annotated[
 Merchant = Annotated[str | None, typer.Option()]
 Justification = Annotated[str | None, typer.Option()]
 PreApproval = Annotated[str | None, typer.Option(help="Pre-approval id.")]
+AsEmployee = Annotated[
+    str | None,
+    typer.Option(
+        "--as",
+        help="Demo user to act as. Default: the --employee (own expenses only).",
+    ),
+]
 
 
 @app.command()
@@ -51,7 +58,7 @@ def serve(
 
 @app.command()
 def seed() -> None:
-    """Reset the database and load the demo policies and employees (mock provider)."""
+    """Reset the database and load the demo policies and users (mock provider)."""
     db_path = resolve_db_path()
     conn = reset_database(db_path)
     try:
@@ -63,9 +70,11 @@ def seed() -> None:
             )
     finally:
         conn.close()
-    typer.secho(
-        f"Seeded {db_path}: ana, bruno (Sales); carla, diego (Engineering).", fg="green"
-    )
+    typer.secho(f"Seeded {db_path}.", fg="green")
+    typer.echo("Demo users and tokens (demo only, never use fixed tokens for real):")
+    for user in DEMO_USERS:
+        roles = ", ".join(user.roles)
+        typer.echo(f"  {user.id:<6} {roles:<20} Authorization: Bearer {user.token}")
 
 
 @app.command()
@@ -77,11 +86,21 @@ def check(
     merchant: Merchant = None,
     justification: Justification = None,
     pre_approval: PreApproval = None,
+    as_user: AsEmployee = None,
 ) -> None:
     """Will this expense be covered? Stores nothing."""
-    expense = build_expense(**locals())
+    expense = build_expense(
+        employee=employee,
+        amount=amount,
+        category=category,
+        at=at,
+        merchant=merchant,
+        justification=justification,
+        pre_approval=pre_approval,
+    )
     with database() as conn:
-        print_decision(expenses.check_expense(conn, expense))
+        actor = employees.act_as(conn, as_user or employee)
+        print_decision(expenses.check_expense(conn, actor, expense))
 
 
 @app.command()
@@ -96,6 +115,7 @@ def submit(
     key: Annotated[
         str | None, typer.Option(help="Idempotency key. Default: a new random one.")
     ] = None,
+    as_user: AsEmployee = None,
 ) -> None:
     """Submit an expense: evaluated and stored, consuming limits."""
     idempotency_key = key or str(uuid.uuid4())
@@ -109,7 +129,8 @@ def submit(
         pre_approval=pre_approval,
     )
     with database() as conn:
-        result = expenses.submit_expense(conn, expense, idempotency_key)
+        actor = employees.act_as(conn, as_user or employee)
+        result = expenses.submit_expense(conn, actor, expense, idempotency_key)
         decision = Decision.model_validate(result.body["decision"])
         replay = " (replayed)" if result.replayed else ""
         typer.echo(

@@ -11,6 +11,13 @@ def test_seed_twice_gives_the_same_demo(cli):
         assert "10 rules, 4 uncompilable, status active" in result.output
 
 
+def test_seed_prints_the_demo_tokens(cli):
+    result = cli("seed")
+    for user in ("ana", "bruno", "carla", "diego", "fede"):
+        assert f"Authorization: Bearer demo-{user}" in result.output
+    assert "employee, finance" in result.output
+
+
 def test_check_prints_outcome_reasons_and_clauses(seeded):
     result = seeded(
         "check",
@@ -43,7 +50,7 @@ def test_unknown_employee_is_an_error(seeded):
         "check", "--employee", "zed", "--amount", "1", "--category", "meals"
     )
     assert result.exit_code == 1
-    assert "not_found" in result.output
+    assert "unauthenticated: unknown user 'zed'" in result.output
 
 
 def test_submit_with_key_is_idempotent_and_listed(seeded):
@@ -104,3 +111,39 @@ def test_policy_compile_and_activate_on_active_version_are_refused(seeded):
     assert compiled.exit_code == 1 and "version_immutable" in compiled.output
     activated = seeded("policy", "activate", "sales")
     assert activated.exit_code == 1 and "version_immutable" in activated.output
+
+
+PENDING_AIRFARE = (
+    "submit",
+    "--employee",
+    "ana",
+    "--amount",
+    "300",
+    "--category",
+    "airfare",
+    "--at",
+    "2026-11-18T10:00",
+)
+
+
+def test_as_goes_through_the_same_authorization(seeded):
+    assert seeded(*PENDING_AIRFARE).exit_code == 0
+
+    as_other = seeded(*PENDING_AIRFARE, "--as", "carla")
+    assert as_other.exit_code == 1 and "forbidden" in as_other.output
+
+    own = seeded("expenses", "resolve", "1", "approved", "--as", "ana")
+    assert own.exit_code == 1 and "separation of duties" in own.output
+    hidden = seeded("expenses", "resolve", "1", "approved", "--as", "carla")
+    assert hidden.exit_code == 1 and "not_found" in hidden.output
+
+    assert "No expenses." in seeded("expenses", "list", "--as", "diego").output
+    by_manager = seeded("expenses", "resolve", "1", "approved", "--as", "bruno")
+    assert by_manager.exit_code == 0, by_manager.output
+
+
+def test_policy_commands_default_to_finance_and_refuse_others(seeded):
+    refused = seeded("policy", "activate", "sales", "--as", "ana")
+    assert refused.exit_code == 1 and "forbidden: only finance" in refused.output
+    listing = seeded("policy", "show", "--as", "ana").output
+    assert "Sales" in listing and "Engineering" not in listing

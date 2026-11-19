@@ -1,14 +1,23 @@
-"""Shared CLI plumbing: the database connection and user-facing errors."""
+"""Shared CLI plumbing: the database connection, `--as` and user-facing errors."""
 
 import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
+from typing import Annotated
 
 import typer
 from pydantic import ValidationError
 
 from covered.domain.errors import CoveredError
 from covered.store.db import open_database, resolve_db_path
+
+AsUser = Annotated[
+    str,
+    typer.Option(
+        "--as",
+        help="Demo user to act as; same permissions as the API (SPEC §12a).",
+    ),
+]
 
 
 @contextmanager
