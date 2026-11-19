@@ -1,0 +1,136 @@
+"""Expense use cases: check, submit (idempotency, concurrency), list, resolve."""
+
+import threading
+
+import pytest
+from service_builders import POLICY_TEXT, expense
+
+from covered.domain import Category, Outcome
+from covered.domain.errors import (
+    IdempotencyKeyReusedError,
+    InvalidTransitionError,
+    NoActivePolicyError,
+    NotFoundError,
+)
+from covered.services import employees, expenses, policies
+from covered.store.db import open_database
+from covered.store.records import ExpenseStatus
+
+
+def _submit(conn, amount, key, **overrides):
+    return expenses.submit_expense(conn, expense(amount, **overrides), key)
+
+
+def test_check_evaluates_without_storing(conn, sales):
+    decision = expenses.check_expense(conn, expense(6000))
+    assert decision.outcome is Outcome.APPROVED
+    assert decision.expense_id is None
+    assert (decision.policy_id, decision.policy_version) == (sales.id, 1)
+    assert expenses.list_expenses(conn, employee_id="ana") == []
+
+
+def test_period_limit_worked_example(conn, sales):
+    """SPEC §4.3: taxi 60, 90 (pending via threshold), 70 → needs approval."""
+    first = _submit(conn, 6000, "k1").body
+    second = _submit(conn, 9000, "k2").body
+    third = _submit(conn, 7000, "k3").body
+
+    assert first["expense"]["status"] == "approved"
+    assert second["expense"]["status"] == "pending"
+    assert third["decision"]["outcome"] == "needs_approval"
+    assert "pending" in third["decision"]["reasons"][0]["message"]
+
+    # A check counts stored approved/pending expenses, but stores nothing itself.
+    assert expenses.check_expense(conn, expense(15000)).outcome is Outcome.REJECTED
+
+
+def test_submit_stores_expense_and_decision(conn, sales):
+    result = _submit(conn, 6000, "k1")
+    assert (result.status_code, result.replayed) == (201, False)
+    listed = expenses.list_expenses(conn, employee_id="ana")
+    assert len(listed) == 1
+    assert listed[0].decision.expense_id == listed[0].expense.id
+    assert listed[0].decision.policy_version == 1
+
+
+def test_idempotent_replay_returns_the_same_response(conn, sales):
+    first = _submit(conn, 6000, "same-key")
+    replay = _submit(conn, 6000, "same-key")
+    assert replay.replayed
+    assert (replay.status_code, replay.body) == (first.status_code, first.body)
+    assert len(expenses.list_expenses(conn)) == 1
+
+
+def test_idempotency_key_reused_with_different_body(conn, sales):
+    _submit(conn, 6000, "same-key")
+    with pytest.raises(IdempotencyKeyReusedError):
+        _submit(conn, 6100, "same-key")
+
+
+def test_concurrent_submits_cannot_both_use_the_remaining_limit(db_path, sales):
+    """Two 150 taxis with pre-approval against a 200 limit: one must be rejected."""
+    outcomes = []
+    barrier = threading.Barrier(2)
+
+    def submit(key):
+        own = open_database(db_path)
+        barrier.wait()
+        result = _submit(own, 15000, key, pre_approval_id="PA-1")
+        outcomes.append(result.body["decision"]["outcome"])
+        own.close()
+
+    threads = [threading.Thread(target=submit, args=(f"k{i}",)) for i in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+    assert sorted(outcomes) == ["approved", "rejected"]
+
+
+def test_no_active_policy_is_an_error_never_a_decision(conn):
+    policy = policies.create_policy(conn, "Draft only")
+    policies.create_version(conn, policy.id, POLICY_TEXT)
+    employees.create_employee(conn, "bruno", "Bruno", policy.id)
+    employees.create_employee(conn, "carla", "Carla", None)
+
+    for employee_id in ("bruno", "carla"):
+        with pytest.raises(NoActivePolicyError):
+            expenses.check_expense(conn, expense(100, employee_id=employee_id))
+        with pytest.raises(NoActivePolicyError):
+            _submit(conn, 100, f"k-{employee_id}", employee_id=employee_id)
+    assert expenses.list_expenses(conn) == []
+
+
+def test_unknown_employee_is_not_found(conn, sales):
+    with pytest.raises(NotFoundError):
+        expenses.check_expense(conn, expense(100, employee_id="nobody"))
+
+
+def test_resolve_pending_then_refuse_further_transitions(conn, sales):
+    pending = _submit(conn, 9000, "k1").body["expense"]["id"]
+    approved = _submit(conn, 1000, "k2").body["expense"]["id"]
+
+    resolved = expenses.resolve_expense(conn, pending, ExpenseStatus.APPROVED)
+    assert resolved.expense.status is ExpenseStatus.APPROVED
+    assert resolved.decision.outcome is Outcome.NEEDS_APPROVAL  # decision unchanged
+
+    for expense_id in (pending, approved):
+        with pytest.raises(InvalidTransitionError):
+            expenses.resolve_expense(conn, expense_id, ExpenseStatus.REJECTED)
+    with pytest.raises(NotFoundError):
+        expenses.resolve_expense(conn, 999, ExpenseStatus.APPROVED)
+
+
+def test_resolved_expenses_change_period_totals(conn, sales):
+    pending = _submit(conn, 9000, "k1").body["expense"]["id"]
+    expenses.resolve_expense(conn, pending, ExpenseStatus.REJECTED)
+    # The rejected 90 no longer counts: 150 with pre-approval fits under 200.
+    decision = expenses.check_expense(conn, expense(15000, pre_approval_id="PA-1"))
+    assert decision.outcome is Outcome.APPROVED
+
+
+def test_list_filters_by_status(conn, sales):
+    _submit(conn, 9000, "k1")
+    _submit(conn, 1000, "k2", category=Category.ALCOHOL)
+    pending = expenses.list_expenses(conn, status=ExpenseStatus.PENDING)
+    assert [item.expense.amount_minor for item in pending] == [9000]
