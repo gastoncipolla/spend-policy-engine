@@ -9,7 +9,7 @@ The contract is [`docs/SPEC.md`](docs/SPEC.md).
 
 ## Quickstart
 
-No API key is needed: without one, Covered uses a mock compiler that replays recorded results for
+No API key is needed: without one, Covered uses a mock compiler that returns hand-written results for
 the two sample policies.
 
 ```bash
@@ -98,6 +98,6 @@ src/covered/
   api/        FastAPI app and JSON routes
   web/        page routes, Jinja2 templates, CSS
   cli/        Typer app
-fixtures/     sample policies and recorded mock compilations
+fixtures/     sample policies and hand-written mock compilations
 tests/        domain, engine, compiler, store, services, api, web, cli, integration
 ```
