@@ -114,7 +114,7 @@ def compile_version(
         version=version,
         outcome="failed" if isinstance(outcome, CompilationFailure) else "ok",
         error=getattr(outcome, "error", None),
-        meta=outcome.meta,
+        **(outcome.meta or {}),  # provider, model, prompt_version, tokens, cost
     )
     return get_version_detail(conn, policy_id, version)
 

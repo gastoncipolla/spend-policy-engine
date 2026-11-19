@@ -164,15 +164,18 @@ def test_compile_in_progress_is_a_conflict(client, db, draft):
     )
 
 
-def test_compile_failure_leaves_nothing(tmp_path):
-    with TestClient(create_app(tmp_path / "unconfigured.db")) as client:
+def test_compile_failure_leaves_nothing(tmp_path, monkeypatch):
+    # The default compiler is chosen by the environment: force the mock, which
+    # only knows the sample policies.
+    monkeypatch.setenv("COVERED_PROVIDER", "mock")
+    with TestClient(create_app(tmp_path / "default.db")) as client:
         policy = client.post("/policies", json={"name": "Sales"}).json()
         client.post(f"/policies/{policy['id']}/versions", json={"text": "Some text."})
         response = client.post(f"/policies/{policy['id']}/versions/1/compile")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] == "compile_failed"
-    assert body["compile_error"] == "compiler not configured"
+    assert body["compile_error"] == "mock mode only supports the sample policies"
     assert body["rules"] == [] and body["uncompilable"] == []
 
 
