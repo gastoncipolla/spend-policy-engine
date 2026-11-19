@@ -36,4 +36,4 @@ Run the same locally before pushing:
 uv run ruff check && uv run ruff format --check && uv run pytest -q
 ```
 
-GitHub Actions are pinned to commit SHAs (a tag can be moved; a SHA cannot). Dependabot proposes updates weekly.
+GitHub Actions are pinned to commit SHAs (a tag can be moved; a SHA cannot). Dependabot proposes updates weekly from `dependabot/...` branches, the only exception to the branch naming rule.
