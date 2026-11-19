@@ -179,6 +179,39 @@ src/covered/
 tests/        unit (engine, compiler validation, money) + API tests (TestClient)
 ```
 
+## 12a. Roles, permissions and audit
+
+Roles: `employee`, `manager`, `finance`. A user can have several roles (a manager also spends). Users have `manager_id` (their own manager) and a policy (via `policy_id`). A manager's team = users whose `manager_id` is that manager.
+
+Identity (no login): each seeded user has a fixed demo token sent as `Authorization: Bearer <token>`. `covered seed` prints the tokens and they are documented as demo-only. Missing or unknown token → 401 `unauthenticated`. The CLI takes `--as <user>`; the pages have an "act as" selector (cookie) that maps to the same tokens.
+
+Security principles (enforced in the service layer, never only in the UI):
+1. **Deny by default**: an action not explicitly allowed is refused.
+2. **Object-level authorization**: access is checked against the specific resource, not only the role. Asking for an expense you may not see → 404 `not_found` (do not reveal it exists).
+3. **Separation of duties**: nobody resolves their own expense, finance included (→ 403 `forbidden`, message explains why).
+4. **Every write records who and when**: rule review (`reviewed_by`, `reviewed_at`), uncompilable classification, activation (`activated_by`, `activated_at`), expense resolution (`resolved_by`, `resolved_at`).
+
+Permission matrix:
+
+| Action | employee | manager | finance |
+|---|---|---|---|
+| Check / submit expense | own only (`employee_id` must be the caller) | own only | own only |
+| List / get expenses | own | own + team | all |
+| Resolve pending expense | no | team members', never own | any, never own |
+| Read policy / versions | own policy, read-only | own policy, read-only | all |
+| Create policy/version, compile, review rules, classify, activate | no | no | yes |
+| List employees | self | self + team | all |
+
+Demo users (fictional): `ana` (employee, Sales, manager `bruno`), `bruno` (employee + manager, Sales, manager `fede`), `carla` (employee, Engineering, manager `diego`), `diego` (employee + manager, Engineering, manager `fede`), `fede` (employee + finance, Engineering policy, no manager).
+
+Errors: 401 `unauthenticated`, 403 `forbidden`, 404 `not_found` for hidden resources.
+
+## 12b. Robustness additions
+
+- **Request id**: every request gets an id (incoming `X-Request-ID` if valid, else generated), returned in the `X-Request-ID` response header and included in every log line for that request.
+- **Catch-all error handler**: unexpected exceptions return 500 `{error: "internal_error", message, request_id}` in the standard envelope, and are logged with the stack trace.
+- **Stale compile lock**: a version stuck in `compiling` for longer than the provider's worst case (timeout × (retries + 1) + margin, e.g. 5 minutes, from `compiling_since`) can be compiled again; the stale lock is taken over and logged.
+
 ## 12. Definition of done (MVP)
 
 - `uv run pytest` green; `uv run ruff check` and `uv run ruff format --check` clean.
