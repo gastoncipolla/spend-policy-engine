@@ -120,6 +120,11 @@ compile your own text, create a new version on the finance page (or with `POST
 /policies/{id}/versions`) and compile it. The mock only knows the two sample texts.
 
 The server writes one JSON log line per compile and per decision to stderr.
+Every response has an `X-Request-ID` header (yours, if you send a valid one: 1-128 characters
+from `A-Z a-z 0-9 . _ : -`), and every log line of that request carries the same
+`request_id`. An unexpected error returns 500 `{"error": "internal_error", "message",
+"request_id"}` and logs the stack trace. A version stuck in `compiling` for more than 5
+minutes can be compiled again; the stale lock is taken over and logged.
 
 ## Tests
 
