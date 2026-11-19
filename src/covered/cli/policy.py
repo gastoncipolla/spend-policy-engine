@@ -13,7 +13,6 @@ from covered.services.authz import Actor
 from covered.services.compilation import compile_version
 from covered.services.policies import PolicySummary
 from covered.services.provider_compiler import default_compiler
-from covered.services.seed import DEMO_FINANCE
 
 app = typer.Typer(
     help="Show, compile and activate policy versions.", no_args_is_help=True
@@ -29,7 +28,7 @@ VersionOpt = Annotated[
 def show(
     policy: Annotated[str | None, typer.Argument(help="Policy id or name.")] = None,
     version: VersionOpt = None,
-    as_user: AsUser = DEMO_FINANCE,
+    as_user: AsUser = ...,
 ) -> None:
     """List policies, or show one version with its rules and clauses."""
     with database() as conn:
@@ -47,7 +46,7 @@ def show(
 
 @app.command("compile")
 def compile_(
-    policy: PolicyArg, version: VersionOpt = None, as_user: AsUser = DEMO_FINANCE
+    policy: PolicyArg, version: VersionOpt = None, as_user: AsUser = ...
 ) -> None:
     """Compile a draft version with the active provider (mock or Anthropic)."""
     with database() as conn:
@@ -65,7 +64,7 @@ def compile_(
 
 @app.command()
 def activate(
-    policy: PolicyArg, version: VersionOpt = None, as_user: AsUser = DEMO_FINANCE
+    policy: PolicyArg, version: VersionOpt = None, as_user: AsUser = ...
 ) -> None:
     """Activate a fully reviewed version (the previous active one is retired)."""
     with database() as conn:

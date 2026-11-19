@@ -7,7 +7,6 @@ import typer
 from covered.cli.context import AsUser, database
 from covered.cli.render import print_expense
 from covered.services import employees, expenses
-from covered.services.seed import DEMO_FINANCE
 from covered.store.records import ExpenseStatus
 
 app = typer.Typer(help="List and resolve stored expenses.", no_args_is_help=True)
@@ -17,7 +16,7 @@ app = typer.Typer(help="List and resolve stored expenses.", no_args_is_help=True
 def list_(
     employee: Annotated[str | None, typer.Option(help="Employee id.")] = None,
     status: Annotated[ExpenseStatus | None, typer.Option(help="Filter.")] = None,
-    as_user: AsUser = DEMO_FINANCE,
+    as_user: AsUser = ...,
 ) -> None:
     """Stored expenses the user may see, newest first."""
     with database() as conn:
@@ -33,7 +32,7 @@ def list_(
 def resolve(
     expense_id: Annotated[int, typer.Argument(help="Expense id.")],
     resolution: Annotated[str, typer.Argument(help="approved or rejected.")],
-    as_user: AsUser = DEMO_FINANCE,
+    as_user: AsUser = ...,
 ) -> None:
     """Approve or reject a pending expense (never your own)."""
     if resolution not in ("approved", "rejected"):

@@ -73,8 +73,8 @@ The container seeds the demo data on start. CI builds and smoke-tests this image
 ## CLI
 
 The CLI calls the same services as the API directly, not over HTTP, with the same permissions.
-`--as <user>` picks the demo user: `check`/`submit` default to the `--employee`, every other
-command to `fede` (finance). Amounts are decimals (`95.50`). A time with no UTC offset is read
+`--as <user>` picks the demo user: `check`/`submit` default to the `--employee`; every other
+command requires `--as` (deny by default: nothing silently acts as finance). Amounts are decimals (`95.50`). A time with no UTC offset is read
 in company time (America/Argentina/Buenos_Aires).
 
 ```bash
@@ -85,12 +85,12 @@ uv run covered check --employee ana --amount 95.50 --category meals --at 2026-11
 uv run covered submit --employee ana --amount 60 --category ground_transport --at 2026-11-03T10:00
 uv run covered submit --employee ana --amount 90 --category ground_transport --key taxi-2
 
-uv run covered policy show                 # list the policies
-uv run covered policy show sales           # rules, uncompilable clauses, uncovered categories
-uv run covered policy compile sales -v 2   # compile a draft version
-uv run covered policy activate sales -v 2
+uv run covered policy show --as fede                 # list the policies
+uv run covered policy show sales --as fede           # rules, uncompilable clauses, uncovered categories
+uv run covered policy compile sales -v 2 --as fede   # compile a draft version
+uv run covered policy activate sales -v 2 --as fede
 
-uv run covered expenses list --status pending
+uv run covered expenses list --status pending --as fede
 uv run covered expenses list --as bruno            # only bruno's and his team's
 uv run covered expenses resolve 2 approved --as bruno
 ```

@@ -72,12 +72,12 @@ def test_submit_with_key_is_idempotent_and_listed(seeded):
     assert "NEEDS APPROVAL" in first.output
     assert "expense #1 (replayed)" in second.output
 
-    listed = seeded("expenses", "list", "--status", "pending")
+    listed = seeded("expenses", "list", "--status", "pending", "--as", "fede")
     assert "USD 120.00" in listed.output and "[pending]" in listed.output
 
-    resolved = seeded("expenses", "resolve", "1", "approved")
+    resolved = seeded("expenses", "resolve", "1", "approved", "--as", "fede")
     assert resolved.exit_code == 0 and "[approved]" in resolved.output
-    again = seeded("expenses", "resolve", "1", "rejected")
+    again = seeded("expenses", "resolve", "1", "rejected", "--as", "fede")
     assert again.exit_code == 1 and "invalid_transition" in again.output
 
 
@@ -98,18 +98,18 @@ def test_submit_generates_a_key_when_missing(seeded):
 
 
 def test_policy_show_lists_and_details(seeded):
-    listing = seeded("policy", "show")
+    listing = seeded("policy", "show", "--as", "fede")
     assert "Sales" in listing.output and "Engineering" in listing.output
-    detail = seeded("policy", "show", "engineering")
+    detail = seeded("policy", "show", "engineering", "--as", "fede")
     assert "Engineering — version 1 (active)" in detail.output
     assert "Entertainment: not reimbursable" in detail.output
     assert "Uncovered categories (always need approval): other" in detail.output
 
 
 def test_policy_compile_and_activate_on_active_version_are_refused(seeded):
-    compiled = seeded("policy", "compile", "sales")
+    compiled = seeded("policy", "compile", "sales", "--as", "fede")
     assert compiled.exit_code == 1 and "version_immutable" in compiled.output
-    activated = seeded("policy", "activate", "sales")
+    activated = seeded("policy", "activate", "sales", "--as", "fede")
     assert activated.exit_code == 1 and "version_immutable" in activated.output
 
 
@@ -147,3 +147,15 @@ def test_policy_commands_default_to_finance_and_refuse_others(seeded):
     assert refused.exit_code == 1 and "forbidden: only finance" in refused.output
     listing = seeded("policy", "show", "--as", "ana").output
     assert "Sales" in listing and "Engineering" not in listing
+
+
+def test_finance_capable_commands_require_an_explicit_user(seeded):
+    # Deny by default: no silent "act as finance" when --as is omitted.
+    for args in (
+        ("expenses", "list"),
+        ("policy", "show"),
+        ("policy", "activate", "sales"),
+    ):
+        result = seeded(*args)
+        assert result.exit_code != 0
+        assert "--as" in result.output
