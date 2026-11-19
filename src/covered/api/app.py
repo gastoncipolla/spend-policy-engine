@@ -11,6 +11,7 @@ from covered.services.compilation import Compiler
 from covered.services.provider_compiler import default_compiler
 from covered.store.db import open_database, resolve_db_path
 from covered.web import pages
+from covered.web.csrf import CsrfMiddleware
 
 
 def create_app(
@@ -29,6 +30,7 @@ def create_app(
     open_database(app.state.db_path).close()  # apply migrations once, up front
 
     install_error_handlers(app)
+    app.add_middleware(CsrfMiddleware)
     app.add_middleware(RequestContextMiddleware)
     app.include_router(catalog.router)
     app.include_router(policies.router)

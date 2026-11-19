@@ -33,7 +33,7 @@ class SamplePolicy:
 
 SAMPLE_POLICIES = (
     SamplePolicy("Sales", "sales.md", ("ana", "bruno")),
-    SamplePolicy("Engineering", "engineering.md", ("carla", "diego", "fede")),
+    SamplePolicy("Engineering", "engineering.md", ("carla", "diego", "fede", "gabi")),
 )
 
 
@@ -53,6 +53,9 @@ class DemoUser:
 E, M, F = Role.EMPLOYEE, Role.MANAGER, Role.FINANCE
 DEMO_USERS = (  # managers before their reports (manager_id is a foreign key)
     DemoUser("fede", "Fede", (E, F), None),
+    # A second finance user, so each finance user's own pending expenses can be
+    # resolved by someone else (separation of duties).
+    DemoUser("gabi", "Gabi", (E, F), None),
     DemoUser("bruno", "Bruno", (E, M), "fede"),
     DemoUser("diego", "Diego", (E, M), "fede"),
     DemoUser("ana", "Ana", (E,), "bruno"),

@@ -109,7 +109,9 @@ def test_lists_are_filtered_by_role(client, pending, user, visible):
     listed = client.get("/expenses", headers=bearer(user)).json()
     assert {item["expense"]["employee_id"] for item in listed} == visible
     people = client.get("/employees", headers=bearer(user)).json()
-    assert {person["id"] for person in people} == visible
+    # gabi (second finance user) has no expenses here but is visible to finance.
+    expected_people = visible | {"gabi"} if user == "fede" else visible
+    assert {person["id"] for person in people} == expected_people
 
 
 def test_bola_another_employees_expense_is_404(client, pending):

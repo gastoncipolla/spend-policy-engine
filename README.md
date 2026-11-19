@@ -40,6 +40,7 @@ There is no login: each seeded user has a fixed **demo-only** token, printed by 
 | `carla` | employee | Engineering | `diego` | `demo-carla` |
 | `diego` | employee, manager | Engineering | `fede` | `demo-diego` |
 | `fede` | employee, finance | Engineering | none | `demo-fede` |
+| `gabi` | employee, finance | Engineering | none | `demo-gabi` |
 
 | Action | employee | manager | finance |
 |---|---|---|---|

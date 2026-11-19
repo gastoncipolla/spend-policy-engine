@@ -42,7 +42,7 @@ def submit(client, key, **kwargs):
     return response.json()
 
 
-def test_seed_creates_two_active_policies_and_five_demo_users(client):
+def test_seed_creates_two_active_policies_and_six_demo_users(client):
     policies = client.get("/policies").json()
     assert {p["name"]: p["active_version"] for p in policies} == {
         "Sales": 1,
@@ -58,6 +58,7 @@ def test_seed_creates_two_active_policies_and_five_demo_users(client):
         "carla": (2, "diego", ["employee"]),
         "diego": (2, "fede", ["employee", "manager"]),
         "fede": (2, None, ["employee", "finance"]),
+        "gabi": (2, None, ["employee", "finance"]),
     }
 
 

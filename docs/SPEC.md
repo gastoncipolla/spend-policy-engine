@@ -202,9 +202,11 @@ Permission matrix:
 | Create policy/version, compile, review rules, classify, activate | no | no | yes |
 | List employees | self | self + team | all |
 
-Demo users (fictional): `ana` (employee, Sales, manager `bruno`), `bruno` (employee + manager, Sales, manager `fede`), `carla` (employee, Engineering, manager `diego`), `diego` (employee + manager, Engineering, manager `fede`), `fede` (employee + finance, Engineering policy, no manager).
+Demo users (fictional): `ana` (employee, Sales, manager `bruno`), `bruno` (employee + manager, Sales, manager `fede`), `carla` (employee, Engineering, manager `diego`), `diego` (employee + manager, Engineering, manager `fede`), `fede` and `gabi` (employee + finance, Engineering policy, no manager; two finance users so each one's own pending expenses can be resolved by the other).
 
 Errors: 401 `unauthenticated`, 403 `forbidden`, 404 `not_found` for hidden resources.
+
+CSRF: page writes use a cookie, so the cookie is `SameSite=Lax` and a middleware rejects unsafe requests that the browser marks as cross-site (`Sec-Fetch-Site`, falling back to `Origin`). Bearer-authenticated API calls are not affected.
 
 ## 12b. Robustness additions
 

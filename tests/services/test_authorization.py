@@ -38,7 +38,7 @@ def demo(tmp_path):
 def users(demo):
     return {
         user_id: employees.act_as(demo, user_id)
-        for user_id in ("ana", "bruno", "carla", "diego", "fede")
+        for user_id in ("ana", "bruno", "carla", "diego", "fede", "gabi")
     }
 
 
@@ -81,7 +81,7 @@ def test_authenticate_by_demo_token(demo):
         ("ana", ["ana"]),
         ("bruno", ["ana", "bruno"]),
         ("diego", ["carla", "diego"]),
-        ("fede", ["ana", "bruno", "carla", "diego", "fede"]),
+        ("fede", ["ana", "bruno", "carla", "diego", "fede", "gabi"]),
     ],
 )
 def test_list_employees(demo, users, user, visible):
@@ -111,7 +111,7 @@ def test_check_and_submit_only_for_yourself(demo, users, user):
         ("carla", {"carla"}),
         ("bruno", {"ana", "bruno"}),
         ("diego", {"carla", "diego"}),
-        ("fede", {"ana", "bruno", "carla", "diego", "fede"}),
+        ("fede", {"ana", "bruno", "carla", "diego", "fede", "gabi"}),
     ],
 )
 def test_list_expenses_is_filtered(demo, users, pending, user, visible):
@@ -291,3 +291,13 @@ def test_finance_writes_record_the_actor(demo, users):
     assert rule.reviewed_by == "fede" and rule.reviewed_at is not None
     edited = policies.update_rule(demo, fede, rule.id, status=RuleStatus.REJECTED)
     assert edited.reviewed_by == "fede"
+
+
+def test_a_finance_users_own_pending_expense_is_resolved_by_the_other_finance_user(
+    demo, users, pending
+):
+    # With two finance users, separation of duties never leaves an expense stuck.
+    resolved = expenses.resolve_expense(
+        demo, users["gabi"], pending["fede"], ExpenseStatus.APPROVED
+    )
+    assert resolved.expense.resolved_by == "gabi"
