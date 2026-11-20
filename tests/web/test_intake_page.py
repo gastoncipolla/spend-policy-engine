@@ -43,7 +43,7 @@ def test_unsupported_currency_is_shown(client):
     page = interpret(client, "un almuerzo con el equipo de 35 lucas")
     assert "Unsupported currency" in page.text
     assert (
-        'id="amount" name="amount" inputmode="decimal" placeholder="80.00" required value=""'
+        'id="amount" name="amount" inputmode="decimal" placeholder="0.00" required value=""'
         in page.text
     )
 
