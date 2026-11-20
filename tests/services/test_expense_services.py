@@ -67,6 +67,21 @@ def test_idempotency_key_reused_with_different_body(conn, sales, ana):
         _submit(conn, ana, 6100, "same-key")
 
 
+def test_idempotency_keys_are_scoped_per_user(conn, sales, ana):
+    """Two users sending the same key do not collide (SPEC §6)."""
+    employees.create_employee(conn, "bea", "Bea", sales.id, token="t-bea")
+    bea = employees.act_as(conn, "bea")
+    for_ana = _submit(conn, ana, 6000, "shared-key")
+    for_bea = _submit(conn, bea, 7000, "shared-key", employee_id="bea")
+    assert not for_ana.replayed and not for_bea.replayed
+    assert for_bea.body["expense"]["employee_id"] == "bea"
+    assert for_bea.body["expense"]["id"] != for_ana.body["expense"]["id"]
+    # Each user's key still replays its own response.
+    assert _submit(conn, ana, 6000, "shared-key").body == for_ana.body
+    replay = _submit(conn, bea, 7000, "shared-key", employee_id="bea")
+    assert replay.replayed and replay.body == for_bea.body
+
+
 def test_concurrent_submits_cannot_both_use_the_remaining_limit(db_path, ana):
     """Two 150 taxis with pre-approval against a 200 limit: one must be rejected."""
     outcomes = []

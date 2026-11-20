@@ -84,7 +84,7 @@ def submit_expense(
         raise InvalidInputError("the Idempotency-Key header must not be empty")
     request_hash = fingerprint(expense)
     with transaction(conn, immediate=True):
-        record = idempotency_store.get_record(conn, key)
+        record = idempotency_store.get_record(conn, actor.id, key)
         if record is not None:
             if record.request_hash != request_hash:
                 raise IdempotencyKeyReusedError(
@@ -102,7 +102,7 @@ def submit_expense(
             mode="json"
         )
         idempotency_store.insert_record(
-            conn, key, request_hash, SUBMIT_STATUS_CODE, body
+            conn, actor.id, key, request_hash, SUBMIT_STATUS_CODE, body
         )
     _log_decision(decision, kind="submit")
     return SubmitResult(SUBMIT_STATUS_CODE, body, replayed=False)

@@ -53,6 +53,14 @@ def draft(conn):
     return policy.id
 
 
+def test_create_version_records_who_loaded_the_text(conn):
+    policy = policies.create_policy(conn, FINANCE, "Engineering")
+    created = policies.create_version(conn, FINANCE, policy.id, POLICY_TEXT)
+    assert created.created_by == "fede"
+    detail = policies.get_version_detail(conn, FINANCE, policy.id, 1)
+    assert detail.created_by == "fede"
+
+
 def _approve_all(conn, detail):
     for rule in detail.rules:
         policies.update_rule(conn, FINANCE, rule.id, status=RuleStatus.APPROVED)
