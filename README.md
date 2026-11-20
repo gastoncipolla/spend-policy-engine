@@ -1,5 +1,7 @@
 # Covered
 
+**Video (5 min, demo + code walkthrough):** https://www.loom.com/share/88e2f936963d4fdc902d2d5c475a594b · **One-page write-up:** [`docs/WRITEUP.md`](docs/WRITEUP.md)
+
 "Will this expense be covered?" Covered turns a written expense policy into explicit rules that
 finance approves, then checks every expense against them with a deterministic engine. Each outcome
 quotes the policy clause behind it. An LLM is used only once per policy version, to propose rules;
