@@ -47,7 +47,21 @@ templates.env.globals.update(
     effects=list(UncompilableEffect),
     is_finance=authz.is_finance,
     is_manager=lambda user: Role.MANAGER in user.roles,
+    status_label=lambda status: STATUS_LABELS[status],
+    role_abilities=lambda user: [ROLE_ABILITIES[r] for r in Role if r in user.roles],
 )
+
+# What each status and role means, in words (badges never rely on color alone).
+STATUS_LABELS = {
+    ExpenseStatus.APPROVED: "Approved",
+    ExpenseStatus.PENDING: "Pending approval",
+    ExpenseStatus.REJECTED: "Rejected",
+}
+ROLE_ABILITIES = {  # SPEC §12a permission matrix
+    Role.EMPLOYEE: "check and submit own expenses",
+    Role.MANAGER: "approve or reject the team's pending expenses (never own)",
+    Role.FINANCE: "review rules, activate policies, resolve any expense (never own)",
+}
 
 TOKEN_COOKIE = "covered_token"
 CHOOSE_USER = "Choose who you are with the “act as” selector first."
