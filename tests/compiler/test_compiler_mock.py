@@ -58,9 +58,25 @@ def test_sample_has_the_required_uncompilable_clauses(name):
             UncompilableEffect.INFORMATIONAL,
         ),
     }
+    per_night = next(clause for clause in by_clause if "per night" in clause)
+    expected[per_night] = (("lodging",), UncompilableEffect.REQUIRES_REVIEW)
     assert {
         clause: (item.categories, item.effect) for clause, item in by_clause.items()
     } == expected
+
+
+@pytest.mark.parametrize("name", SAMPLES)
+def test_per_night_limits_are_not_compiled_as_max_amount(name):
+    """Regression: "Hotel ... up to USD X per night" is a per-unit cap. As a
+    per-expense max_amount it would wrongly reject a multi-night stay."""
+    outcome = compile_text(sample(name), MockProvider())
+    assert not any("per night" in rule.clause for rule in outcome.rules)
+    assert not any(
+        rule.params.type == RuleType.MAX_AMOUNT and rule.params.category == "lodging"
+        for rule in outcome.rules
+    )
+    [hotel] = [item for item in outcome.uncompilable if "per night" in item.clause]
+    assert hotel.effect is UncompilableEffect.REQUIRES_REVIEW
 
 
 def test_sample_policies_differ():

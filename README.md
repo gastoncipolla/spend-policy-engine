@@ -5,7 +5,8 @@ finance approves, then checks every expense against them with a deterministic en
 quotes the policy clause behind it. An LLM is used only once per policy version, to propose rules;
 checking an expense never calls it.
 
-The contract is [`docs/SPEC.md`](docs/SPEC.md).
+The contract is [`docs/SPEC.md`](docs/SPEC.md). How the code is organized, the request flows and the
+design patterns it uses (with links to the code) are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
 
@@ -113,8 +114,24 @@ uv run covered serve
 |---|---|
 | `ANTHROPIC_API_KEY` | When it is set, policies are compiled by the Anthropic API. |
 | `COVERED_PROVIDER` | `mock` or `anthropic`. Default: `anthropic` if a key is set, otherwise `mock`. |
-| `COVERED_MODEL` | Model used for compiling (default `claude-sonnet-5-5`). |
+| `COVERED_MODEL` | Model used for compiling (default `claude-haiku-5-5`; `claude-sonnet-5-5` also has a known price). |
 | `COVERED_DB` | SQLite file (default `./data/covered.db`). |
+
+### Model choice
+
+The default is `claude-haiku-5-5`; set `COVERED_MODEL=claude-sonnet-5-5` to switch.
+
+- First real run (two sample policies, earlier prompt): Sonnet 5.5 compiled "Hotel stays ...
+  up to USD X per night" as a per-expense `max_amount`, which would reject a legitimate
+  3-night stay. Haiku 5.5 marked it uncompilable, the correct answer. The prompt now says
+  per-unit limits are uncompilable.
+- With that prompt, the [compiler eval](evals/compiler/README.md) (11 fictional policies,
+  140 scored clauses per model) puts both models at about 90% accuracy: Haiku 91% with 2
+  unsafe items (a missed conflict flag), Sonnet 90% with none and slightly more consistent.
+  Haiku costs about USD 0.001 per policy, Sonnet about USD 0.015.
+
+So the default rests on cost for an equal result, on a small sample. Every compiled rule is
+reviewed by finance before it is active, whichever model proposed it.
 
 `covered seed` always uses the mock, so the demo data is the same with or without a key. To
 compile your own text, create a new version on the finance page (or with `POST
@@ -137,6 +154,15 @@ uv run ruff format --check
 
 The tests never call the real API: they use the mock provider or a fake client.
 
+### Compiler eval
+
+`evals/compiler/` holds a small hand-written evaluation of the compiler (per-night limits,
+amount formats, contradictions, prompt injection, a Spanish policy...) and a runner that
+reports accuracy, consistency across repeats, cost and latency per model. See
+[`evals/compiler/README.md`](evals/compiler/README.md) and the latest results in
+`evals/compiler/results/`. It is a small sample (70 expected clauses, 11 fictional policies),
+a sanity check rather than a benchmark.
+
 ## Layout
 
 ```
@@ -152,3 +178,5 @@ src/covered/
 fixtures/     sample policies and hand-written mock compilations
 tests/        domain, engine, compiler, store, services, api, web, cli, integration
 ```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layer diagram and design patterns.

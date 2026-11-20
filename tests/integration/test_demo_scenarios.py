@@ -80,8 +80,18 @@ def test_meal_within_limits_is_approved_with_warnings(client):
 def test_lodging_above_threshold_needs_approval(client):
     decision = check(client, employee="ana", amount_minor=12000, category="lodging")
     assert decision["outcome"] == "needs_approval"
-    assert [r["outcome"] for r in decision["reasons"]] == ["needs_approval"]
+    assert [r["outcome"] for r in decision["reasons"]] == ["needs_approval"] * 3
     assert "pre-approval" in decision["reasons"][0]["clause"]
+
+
+def test_per_night_hotel_cap_sends_every_stay_to_review(client):
+    """A per-night cap is not a per-expense cap: a 3-night stay at USD 200/night
+    (USD 600) must not be rejected, it goes to review (uncompilable clause)."""
+    decision = check(client, employee="ana", amount_minor=60000, category="lodging")
+    assert decision["outcome"] == "needs_approval"
+    sources = [r["source"] for r in decision["reasons"]]
+    assert "uncompilable" in sources
+    assert all(r["outcome"] != "rejected" for r in decision["reasons"])
 
 
 def test_late_sunday_expensive_meal_is_rejected_with_every_reason(client):

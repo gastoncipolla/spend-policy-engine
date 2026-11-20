@@ -1,0 +1,36 @@
+description = "A policy written in Spanish, with decimal commas and a per-night hotel cap."
+policy = """
+# Política de gastos del equipo comercial (empresa ficticia)
+
+Todos los montos están en dólares estadounidenses (USD).
+
+Las comidas se reembolsan hasta USD 45,00 por gasto.
+Los vuelos de más de USD 1.200,00 requieren un ID de aprobación previa.
+Las bebidas alcohólicas no son reembolsables.
+El transporte terrestre tiene un tope de USD 150,00 por empleado por mes calendario.
+Los hoteles se cubren hasta USD 120,00 por noche.
+Los gastos personales no se reembolsan.
+"""
+
+[[rule]]
+clause = "Las comidas se reembolsan hasta USD 45,00 por gasto."
+params = { type = "max_amount", category = "meals", amount_minor = 4500 }
+
+[[rule]]
+clause = "Los vuelos de más de USD 1.200,00 requieren un ID de aprobación previa."
+params = { type = "pre_approval_threshold", amount_minor = 120000, categories = ["airfare"] }
+
+[[rule]]
+clause = "Las bebidas alcohólicas no son reembolsables."
+params = { type = "prohibited_category", category = "alcohol" }
+
+[[rule]]
+clause = "El transporte terrestre tiene un tope de USD 150,00 por empleado por mes calendario."
+params = { type = "period_limit", category = "ground_transport", amount_minor = 15000, period = "month" }
+
+[[uncompilable]]
+clause = "Los hoteles se cubren hasta USD 120,00 por noche."
+effect = "requires_review"
+
+[[uncompilable]]
+clause = "Los gastos personales no se reembolsan."
