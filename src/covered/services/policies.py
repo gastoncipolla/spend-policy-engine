@@ -117,7 +117,7 @@ def create_version(
     with transaction(conn, immediate=True):
         if policy_store.get_policy(conn, policy_id) is None:
             raise NotFoundError(f"policy {policy_id} not found")
-        return policy_store.insert_version(conn, policy_id, text)
+        return policy_store.insert_version(conn, policy_id, text, actor.id)
 
 
 def get_version_detail(

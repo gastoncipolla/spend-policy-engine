@@ -83,6 +83,7 @@ class PolicyVersion(_Record):
     compile_error: str | None = None
     compile_meta: dict[str, Any] | None = None
     created_at: datetime
+    created_by: str | None = None
     activated_by: str | None = None
     activated_at: datetime | None = None
     compiling_since: datetime | None = None
@@ -133,6 +134,7 @@ class StoredExpense(_Record):
 
 
 class IdempotencyRecord(_Record):
+    actor_id: str
     key: str
     request_hash: str
     status_code: int

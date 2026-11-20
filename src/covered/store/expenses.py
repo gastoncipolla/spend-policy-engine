@@ -99,6 +99,9 @@ def period_totals(
 
 
 def insert_decision(conn: sqlite3.Connection, decision: Decision) -> None:
+    """Persist the decision of a submitted expense; checks are never stored."""
+    if decision.expense_id is None:
+        raise ValueError("only decisions of submitted expenses are stored")
     data = decision.model_dump(mode="json")
     conn.execute(
         "INSERT INTO decisions (expense_id, employee_id, policy_id, policy_version,"
