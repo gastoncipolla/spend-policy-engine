@@ -19,10 +19,6 @@
       }
     },
     {
-      "clause": "Hotel stays are reimbursed up to USD 180.00 per night.",
-      "params": {"type": "max_amount", "category": "lodging", "amount_minor": 18000}
-    },
-    {
       "clause": "Flights are reimbursed up to USD 700.00 per ticket.",
       "params": {"type": "max_amount", "category": "airfare", "amount_minor": 70000}
     },
@@ -53,6 +49,12 @@
       "reason": "Whether a justification is reasonable needs human judgement, and the engine cannot tell client meals from other meals.",
       "categories": ["meals"],
       "effect": "informational"
+    },
+    {
+      "clause": "Hotel stays are reimbursed up to USD 180.00 per night.",
+      "reason": "The cap is per night, but max_amount caps a whole expense and one hotel expense can cover several nights. The engine cannot check it without the number of nights.",
+      "categories": ["lodging"],
+      "effect": "requires_review"
     },
     {
       "clause": "We prefer partner hotels whenever one is available.",

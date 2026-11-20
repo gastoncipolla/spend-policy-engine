@@ -113,8 +113,19 @@ uv run covered serve
 |---|---|
 | `ANTHROPIC_API_KEY` | When it is set, policies are compiled by the Anthropic API. |
 | `COVERED_PROVIDER` | `mock` or `anthropic`. Default: `anthropic` if a key is set, otherwise `mock`. |
-| `COVERED_MODEL` | Model used for compiling (default `claude-sonnet-5-5`). |
+| `COVERED_MODEL` | Model used for compiling (default `claude-haiku-5-5`; `claude-sonnet-5-5` also has a known price). |
 | `COVERED_DB` | SQLite file (default `./data/covered.db`). |
+
+### Model choice
+
+The default is `claude-haiku-5-5`. We compiled both sample policies with Haiku 5.5 and Sonnet 5.5:
+both produced the same rules, except for the "Hotel stays are reimbursed up to USD X per night" clause of each policy.
+Sonnet compiled it as a per-expense `max_amount`, which would reject a legitimate 3-night stay;
+Haiku marked it uncompilable, which is the correct, conservative answer (the expense data has no
+number of nights). Haiku cost about USD 0.0016 per policy (Sonnet about USD 0.02) with 10-12 s
+latency. This is a two-policy sample, not a benchmark: set `COVERED_MODEL=claude-sonnet-5-5` to
+switch back. Every compiled rule is reviewed by finance before it is active, whichever model
+proposed it.
 
 `covered seed` always uses the mock, so the demo data is the same with or without a key. To
 compile your own text, create a new version on the finance page (or with `POST

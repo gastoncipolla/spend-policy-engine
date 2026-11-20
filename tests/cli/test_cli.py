@@ -11,8 +11,8 @@ def test_seed_twice_gives_the_same_demo(cli):
     for _ in range(2):
         result = cli("seed")
         assert result.exit_code == 0, result.output
-        assert "8 rules, 4 uncompilable, status active" in result.output
-        assert "10 rules, 4 uncompilable, status active" in result.output
+        assert "7 rules, 5 uncompilable, status active" in result.output
+        assert "9 rules, 5 uncompilable, status active" in result.output
 
 
 def test_seed_prints_the_demo_tokens(cli):
@@ -107,7 +107,9 @@ def test_policy_show_lists_and_details(seeded):
     detail = seeded("policy", "show", "engineering", "--as", "fede")
     assert "Engineering — version 1 (active)" in detail.output
     assert "Entertainment: not reimbursable" in detail.output
-    assert "Uncovered categories (always need approval): other" in detail.output
+    assert (
+        "Uncovered categories (always need approval): lodging, other" in detail.output
+    )
 
 
 def test_policy_compile_and_activate_on_active_version_are_refused(seeded):
