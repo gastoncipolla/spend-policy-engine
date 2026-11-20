@@ -57,19 +57,45 @@ def migrate(conn: sqlite3.Connection) -> list[str]:
         (item for item in (resources.files("covered.store") / "migrations").iterdir()),
         key=lambda item: item.name,
     )
-    newly_applied = []
-    for script in scripts:
-        if not script.name.endswith(".sql") or script.name in applied:
-            continue
-        with transaction(conn, immediate=True):
-            for statement in _statements(script.read_text(encoding="utf-8")):
-                conn.execute(statement)
-            conn.execute(
-                "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
-                (script.name, utc_now_iso()),
-            )
-        newly_applied.append(script.name)
-    return newly_applied
+    pending = [
+        script
+        for script in scripts
+        if script.name.endswith(".sql") and script.name not in applied
+    ]
+    if not pending:
+        return []
+    # SQLite's table-rebuild recipe: foreign keys off while a migration drops
+    # and renames tables (the pragma is a no-op inside a transaction), then
+    # every foreign key is checked before the migration commits.
+    conn.execute("PRAGMA foreign_keys = OFF")
+    try:
+        for script in pending:
+            with transaction(conn, immediate=True):
+                execute_script(conn, script.read_text(encoding="utf-8"))
+                _require_foreign_keys(conn, script.name)
+                conn.execute(
+                    "INSERT INTO schema_migrations (name, applied_at) VALUES (?, ?)",
+                    (script.name, utc_now_iso()),
+                )
+    finally:
+        conn.execute("PRAGMA foreign_keys = ON")
+    return [script.name for script in pending]
+
+
+def execute_script(conn: sqlite3.Connection, sql: str) -> None:
+    """Run a multi-statement SQL file on `conn`, inside the caller's transaction.
+
+    `sqlite3.executescript` would commit first, so statements run one by one.
+    """
+    for statement in _statements(sql):
+        conn.execute(statement)
+
+
+def _require_foreign_keys(conn: sqlite3.Connection, name: str) -> None:
+    violations = conn.execute("PRAGMA foreign_key_check").fetchall()
+    if violations:
+        rows = ", ".join(f"{row[0]} rowid {row[1]} -> {row[2]}" for row in violations)
+        raise sqlite3.IntegrityError(f"{name}: foreign key violations: {rows}")
 
 
 def _statements(sql: str) -> Iterator[str]:

@@ -57,7 +57,7 @@ def test_migration_004_keeps_existing_rows(tmp_path):
     conn = _database_before_004(str(tmp_path / "old.db"))
     _seed_old_rows(conn)
 
-    assert migrate(conn) == ["004_data_model_integrity.sql"]
+    assert migrate(conn) == ["004_data_model_integrity.sql", "005_roles.sql"]
 
     version = policies.get_version(conn, 1, 1)
     assert (version.created_by, version.activated_by) == (None, "fede")

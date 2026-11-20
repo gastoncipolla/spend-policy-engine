@@ -57,7 +57,7 @@ def test_seed_creates_two_active_policies_and_six_demo_users(client):
         "bruno": (1, "fede", ["employee", "manager"]),
         "carla": (2, "diego", ["employee"]),
         "diego": (2, "fede", ["employee", "manager"]),
-        "fede": (2, None, ["employee", "finance"]),
+        "fede": (2, None, ["employee", "finance", "manager"]),
         "gabi": (2, None, ["employee", "finance"]),
     }
 
