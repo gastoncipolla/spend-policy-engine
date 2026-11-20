@@ -241,8 +241,20 @@ def test_decision_explains_outcome_and_highlights_cited_clauses(client):
         '<span class="cite">Rule R1 cites the policy:</span> '
         "<mark>“Meals are reimbursed up to USD 80.00 per expense.”</mark>"
     ) in page.text
-    assert "Clause U1 cites the policy:" in page.text  # informational note
-    assert '<span class="badge note">Note</span>' in page.text
+
+
+def test_informational_notes_are_collapsed_below_the_reasons(client):
+    act_as(client, "ana")
+    page = client.post("/employee", data=employee_form()).text
+    # Notes never change the outcome: one closed <details>, after the reasons.
+    assert "<summary>Policy notes (2)</summary>" in page
+    assert (
+        '<details class="notes">' in page and '<details class="notes" open' not in page
+    )
+    assert "“Personal expenses are not reimbursable.”" in page
+    assert page.index("Rule R1 cites the policy:") < page.index("Policy notes")
+    assert "Clause U1 cites the policy:" not in page
+    assert "Keep this policy clause in mind" not in page
 
 
 def test_history_shows_status_in_words(client):

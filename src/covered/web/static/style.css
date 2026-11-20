@@ -120,7 +120,7 @@ h4 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: .05e
   color: var(--rejected); background: var(--rejected-bg); border-color: var(--rejected);
 }
 .badge.retired, .badge.neutral { color: var(--muted); background: var(--page); border-color: var(--line); }
-.badge.anthropic, .badge.note { color: var(--info); background: var(--info-bg); border-color: var(--info); }
+.badge.anthropic { color: var(--info); background: var(--info-bg); border-color: var(--info); }
 
 /* Decision */
 .decision { border-left: 8px solid var(--line); }
@@ -146,6 +146,10 @@ mark sup { font-size: 11px; font-weight: 700; color: var(--accent); margin-left:
 mark:target { outline: 3px solid var(--accent); }
 .source { font-size: 13px; color: var(--muted); margin-top: 4px; }
 .why + .why { margin-top: 8px; }
+details.notes { margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
+details.notes summary { cursor: pointer; font-weight: 600; }
+details.notes ul { margin: 6px 0 0; padding-left: 18px; }
+details.notes li { margin: 2px 0; }
 
 /* Forms */
 form.stack label { display: block; margin: 12px 0 4px; font-size: 14px; font-weight: 600; }
