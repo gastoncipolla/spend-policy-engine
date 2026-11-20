@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Team approvals · Covered{% endblock %}
+{% block content %}
+<h1>Team approvals</h1>
+{% if denied %}
+<div class="alert error" role="alert">{{ denied }}</div>
+<p><a class="button secondary" href="/employee">Go to My expenses</a></p>
+{% else %}
+<p class="muted lead">Expenses from people who report to you that need your decision. Approve or reject each one; you can never decide on your own.</p>
+<p class="small muted team-line">Your team:
+  {% for member in team %}<strong>{{ member.name }}</strong>{% if not loop.last %}, {% endif %}{% else %}nobody reports to you yet.{% endfor %}
+</p>
+
+<h2>Waiting for your decision <span class="count{% if pending %} attention{% endif %}">{{ pending | length }}</span></h2>
+{% set resolve_base = "/employee" %}
+{% set empty_text = "Nothing waiting for you. When someone on your team submits an expense that needs approval, it shows up here." %}
+{% include "_pending.html" %}
+{% endif %}
+{% endblock %}

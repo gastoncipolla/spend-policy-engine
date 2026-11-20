@@ -8,37 +8,48 @@
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
+  {# Demo scaffolding, deliberately outside the product chrome (SPEC §12a: no login). #}
+  <div class="demo-strip" role="note" aria-label="Demo mode">
+    <div class="demo-inner">
+      <span><span class="demo-tag">Demo mode</span>
+        {% if actor %}signed in as <strong>{{ actor.name }}</strong> · <a href="/demo">Switch user</a>
+        {% else %}no user signed in · <a href="/demo">Choose a user</a>{% endif %}
+      </span>
+      <span class="demo-provider">Compiler: <strong>{{ provider }}</strong>{% if provider == "mock" %} (sample policies only){% elif provider == "anthropic" %} (real LLM){% endif %}</span>
+    </div>
+  </div>
   <header class="top">
     <a class="brand" href="/">Covered</a>
+    {# Only the pages this user may open (pages.py `_pages_for`): never a link that 403s. #}
+    {% if nav %}
     <nav aria-label="Main">
-      <a href="/employee" {% if here == "/employee" %}aria-current="page"{% endif %}>Employee</a>
-      {% if actor and is_finance(actor) %}<a href="/finance" {% if here == "/finance" %}aria-current="page"{% endif %}>Finance</a>{% endif %}
-      <a href="/docs">API</a>
+      {% for path, label, waiting in nav %}
+      <a href="{{ path }}" {% if here == path %}aria-current="page"{% endif %}>{{ label }}{% if waiting is not none %} <span class="count{% if waiting %} attention{% endif %}" aria-label="{{ waiting }} waiting for you">{{ waiting }}</span>{% endif %}</a>
+      {% endfor %}
     </nav>
-    <span class="provider">Compiler:
-      <span class="badge {{ provider }}">{{ provider }}{% if provider == "mock" %} (sample policies only){% elif provider == "anthropic" %} (real LLM){% endif %}</span>
-    </span>
-  </header>
-  <div class="identity{% if not actor %} nobody{% endif %}">
-    <div class="who" role="status">
+    {% endif %}
+    <div class="top-right">
+      <a class="api-link" href="/docs">API docs</a>
       {% if actor %}
-      <span class="muted">You are</span> <strong class="who-name">{{ actor.name }}</strong>
-      {% for role in actor.roles | sort %}<span class="role role-{{ role }}">{{ role }}</span>{% endfor %}
-      <span class="can muted">Can: {{ role_abilities(actor) | join("; ") }}.</span>
-      {% else %}
-      <strong>No demo user chosen.</strong> <span class="muted">Pick one to see what their role allows.</span>
+      <details class="user-menu">
+        <summary>
+          <span class="avatar" aria-hidden="true">{{ actor.name[:1] }}</span>
+          <span class="user-name">{{ actor.name }}</span>
+          {% for role in actor.roles | sort %}<span class="role role-{{ role }}">{{ role }}</span>{% endfor %}
+        </summary>
+        <div class="menu">
+          <p class="small muted menu-label">Signed in as {{ actor.name }}. You can:</p>
+          <ul class="abilities small">{% for ability in role_abilities(actor) %}<li>{{ ability | capitalize }}</li>{% endfor %}</ul>
+          <a class="menu-item" href="/demo">Switch user</a>
+          <form method="post" action="/act-as">
+            <input type="hidden" name="user_id" value="">
+            <button type="submit" class="menu-item link">Sign out</button>
+          </form>
+        </div>
+      </details>
       {% endif %}
     </div>
-    <form method="post" action="/act-as" class="act-as">
-      <label for="act-as">Act as</label>
-      <select id="act-as" name="user_id" onchange="this.form.submit()">
-        {% if not actor %}<option value="" selected>choose a demo user…</option>{% endif %}
-        {% for u in users %}<option value="{{ u.id }}" {% if actor and u.id == actor.id %}selected{% endif %}>{{ u.name }} ({{ u.roles | sort | join(", ") }})</option>{% endfor %}
-      </select>
-      <input type="hidden" name="next" value="{{ here }}">
-      <noscript><button class="small secondary" type="submit">Switch</button></noscript>
-    </form>
-  </div>
+  </header>
   <main>
     {% if error %}<div class="alert error" role="alert"><strong>Error:</strong> {{ error }}</div>{% endif %}
     {% if notice %}<div class="alert notice" role="status"><strong>Done:</strong> {{ notice }}</div>{% endif %}

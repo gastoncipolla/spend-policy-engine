@@ -65,6 +65,8 @@ jobs:
       - name: Pages render
         run: |
           curl -fsS http://127.0.0.1:8000/ > /dev/null
+          curl -fsS http://127.0.0.1:8000/demo > /dev/null
+          curl -fsS -b covered_token=demo-bruno http://127.0.0.1:8000/team > /dev/null
           curl -fsS http://127.0.0.1:8000/employee > /dev/null
           curl -fsS -b covered_token=demo-fede http://127.0.0.1:8000/finance > /dev/null
           curl -fsS -H "Authorization: Bearer demo-ana" http://127.0.0.1:8000/expenses > /dev/null

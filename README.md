@@ -21,13 +21,15 @@ uv run covered serve    # http://127.0.0.1:8000
 
 Then open:
 
-- <http://127.0.0.1:8000/>: home page; shows which compiler is active (mock or real).
+- <http://127.0.0.1:8000/>: your home, or the demo panel (`/demo`) to choose who you are.
 - <http://127.0.0.1:8000/employee>: check an expense ("Will this be covered?"), submit it, and see your history.
+- <http://127.0.0.1:8000/team>: managers approve or reject their team's pending expenses.
 - <http://127.0.0.1:8000/finance>: the policy text next to its rules, rule review, version activation and pending expenses.
 - <http://127.0.0.1:8000/docs>: the JSON API (OpenAPI).
 
-Pick who you are with the **Act as** selector at the top of every page (it stores that user's
-demo token in a cookie). Each user only sees what their role allows. The sample policies are in
+Pick who you are in the **demo panel** (`/demo`, linked from the "Demo mode" strip at the top; it
+stores that user's demo token in a cookie). Each user only sees what their role allows, and the
+top nav only links the pages they may open. The sample policies are in
 `fixtures/policies/` and belong to a fictional company.
 
 ### Demo users, roles and tokens

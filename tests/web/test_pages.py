@@ -12,7 +12,7 @@ SALES_TEXT = (
 
 
 def act_as(client, user_id, page="/"):
-    """Pick a demo user in the "act as" selector (sets the cookie)."""
+    """Sign in as a demo user from the demo panel (sets the cookie)."""
     return client.post("/act-as", data={"user_id": user_id, "next": page})
 
 
@@ -27,36 +27,111 @@ def employee_form(**overrides):
     return {**form, **overrides}
 
 
-def test_home_asks_who_you_are_then_shows_what_you_may_see(client):
-    anonymous = client.get("/")
-    assert anonymous.status_code == 200
-    assert "mock (sample policies only)" in anonymous.text
-    assert 'action="/act-as"' in anonymous.text and "Sales" not in anonymous.text
+NAV = {
+    "/employee": 'href="/employee"',
+    "/team": 'href="/team"',
+    "/finance": 'href="/finance"',
+}
 
-    finance = act_as(client, "fede")
-    assert 'href="/employee"' in finance.text and 'href="/finance"' in finance.text
-    assert "Sales" in finance.text and "Engineering" in finance.text
 
-    employee = act_as(client, "ana")
-    assert 'href="/finance"' not in employee.text
-    assert "Sales" in employee.text and "Engineering" not in employee.text
+def nav_links(page):
+    header = page.text.split("<main>")[0]
+    return {path for path, link in NAV.items() if link in header}
+
+
+def test_landing_without_a_user_is_the_demo_panel(client):
+    landing = client.get("/", follow_redirects=False)
+    assert landing.status_code == 303 and landing.headers["location"] == "/demo"
+    panel = client.get("/demo")
+    assert "Choose a user to sign in as" in panel.text
+    assert "<strong>mock</strong> (sample policies only)" in panel.text
+    assert "Sign in as Gabi" in panel.text and "reports to Diego" in panel.text
+    assert "Review rules, activate policies" in panel.text  # what each role can do
+    assert nav_links(panel) == set()
+
+
+def test_landing_with_a_user_redirects_home(client):
+    for user in ("ana", "bruno", "fede"):
+        act_as(client, user)
+        home = client.get("/", follow_redirects=False)
+        assert home.status_code == 303 and home.headers["location"] == "/employee"
+
+
+def test_signing_in_lands_on_the_users_home(client):
+    response = client.post(
+        "/act-as", data={"user_id": "fede", "next": "/"}, follow_redirects=False
+    )
+    assert response.headers["location"] == "/employee"
+
+
+def test_switching_user_never_lands_on_a_forbidden_page(client):
+    act_as(client, "fede")
+    response = client.post(
+        "/act-as", data={"user_id": "ana", "next": "/finance"}, follow_redirects=False
+    )
+    assert response.headers["location"] == "/employee"
+    response = client.post(
+        "/act-as", data={"user_id": "bruno", "next": "/team"}, follow_redirects=False
+    )
+    assert response.headers["location"] == "/team"
+
+
+def test_nav_shows_only_pages_the_user_may_open(client):
+    expected = {
+        "ana": {"/employee"},
+        "carla": {"/employee"},
+        "bruno": {"/employee", "/team"},
+        "gabi": {"/employee", "/finance"},
+        "fede": {"/employee", "/team", "/finance"},
+    }
+    for user, paths in expected.items():
+        page = act_as(client, user)
+        assert nav_links(page) == paths, user
+        for path in NAV:
+            status = client.get(path).status_code
+            assert (status == 200) == (path in paths), (user, path, status)
+
+
+def test_nav_counts_what_is_waiting_for_you(client):
+    submit_pending_as(client, "ana")
+    page = act_as(client, "bruno")
+    assert 'aria-label="1 waiting for you">1</span>' in page.text
+    assert "1 expense from your team is waiting for your decision." in page.text
+    fede = act_as(client, "fede")  # finance sees it; it is not his team's
+    assert '<a href="/team" ><span' not in fede.text
+    assert 'Finance <span class="count attention"' in fede.text
+
+
+def test_product_pages_have_no_act_as_select_but_a_user_menu(client):
+    page = act_as(client, "bruno")
+    assert '<select id="act-as"' not in page.text
+    assert '<details class="user-menu">' in page.text
+    assert '<span class="user-name">Bruno</span>' in page.text
+    assert "Demo mode" in page.text and 'href="/demo">Switch user</a>' in page.text
+
+
+def test_sign_out_clears_the_user(client):
+    act_as(client, "ana")
+    page = act_as(client, "")
+    assert "Choose a user to sign in as" in page.text
+    assert client.get("/", follow_redirects=False).headers["location"] == "/demo"
 
 
 def test_act_as_unknown_user_clears_the_cookie(client):
     act_as(client, "ana")
     page = act_as(client, "nobody", "/employee")
-    assert "Choose who you are" in page.text
+    assert "Choose a user to sign in as" in page.text
+    assert client.get("/employee", follow_redirects=False).status_code == 303
 
 
 def test_employee_page_is_for_the_current_user(client):
     act_as(client, "bruno")
     page = client.get("/employee")
     assert page.status_code == 200
+    assert "<h1>My expenses</h1>" in page.text
     assert "Expense for Bruno" in page.text
     assert "Will this be covered?" in page.text
-    assert "Team pending" in page.text
-    act_as(client, "ana")
-    assert "Team pending" not in client.get("/employee").text
+    assert "Your policy: <strong>Sales</strong>" in page.text
 
 
 def test_employee_check_shows_outcome_and_quoted_clauses(client):
@@ -86,6 +161,30 @@ def test_employee_invalid_amount_shows_error(client):
     page = client.post("/employee", data=employee_form(amount="1.234"))
     assert page.status_code == 200
     assert "more than 2 decimal places" in page.text
+
+
+def submit_pending_as(client, user_id):
+    """`user_id` submits a lodging expense that needs approval."""
+    act_as(client, user_id)
+    form = employee_form(
+        action="submit",
+        amount="120.00",
+        category="lodging",
+        occurred_at="2026-11-18T12:00",
+        idempotency_key=f"pending-{user_id}",
+    )
+    client.post("/employee", data=form)
+
+
+def test_team_page_is_for_managers(client):
+    act_as(client, "ana")
+    denied = client.get("/team")
+    assert denied.status_code == 403 and "for managers" in denied.text
+    act_as(client, "bruno")
+    page = client.get("/team")
+    assert "<h1>Team approvals</h1>" in page.text
+    assert "Your team:\n  <strong>Ana</strong>" in page.text
+    assert "Nothing waiting for you." in page.text
 
 
 def test_employee_post_without_a_user_stores_nothing(client):
@@ -164,7 +263,8 @@ def test_finance_resolves_pending_expense(client):
     )
     act_as(client, "fede")
     finance = client.get("/finance")
-    assert "Pending expenses" in finance.text and "USD 120.00" in finance.text
+    assert "Expenses pending approval" in finance.text
+    assert "USD 120.00" in finance.text
     resolved = client.post(
         "/finance/expenses/1/resolve",
         data={"resolution": "approved", "policy_id": 1, "version": 1},
@@ -190,16 +290,18 @@ def test_manager_resolves_team_pending_but_not_their_own(client):
     act_as(client, "bruno")
     client.post("/employee", data={**pending, "idempotency_key": "bruno-1"})  # #2
 
-    page = client.get("/employee")
+    page = client.get("/team")
     assert 'action="/employee/expenses/1/resolve"' in page.text
     assert 'action="/employee/expenses/2/resolve"' not in page.text
 
+    assert "Your own expense" not in page.text  # only the team's, never your own
     own = client.post("/employee/expenses/2/resolve", data={"resolution": "approved"})
     assert "separation of duties" in own.text
     resolved = client.post(
         "/employee/expenses/1/resolve", data={"resolution": "rejected"}
     )
     assert "Expense #1 rejected." in resolved.text
+    assert "<h1>Team approvals</h1>" in resolved.text
     assert client.get("/expenses/1").json()["expense"]["resolved_by"] == "bruno"
 
     act_as(client, "fede")
@@ -214,23 +316,19 @@ def test_highlight_escapes_html_and_marks_clauses():
     )
 
 
-def test_identity_bar_says_who_you_are_and_what_you_can_do(client):
-    anonymous = client.get("/employee")
-    assert "No demo user chosen." in anonymous.text
-
+def test_user_menu_says_who_you_are_and_what_you_can_do(client):
     page = act_as(client, "bruno", "/employee")
-    assert '<strong class="who-name">Bruno</strong>' in page.text
+    assert "signed in as <strong>Bruno</strong>" in page.text
     assert '<span class="role role-manager">manager</span>' in page.text
-    assert "approve or reject the team&#39;s pending expenses (never own)" in page.text
+    assert "Approve or reject the team&#39;s pending expenses (never own)" in page.text
     assert '<a href="/employee" aria-current="page">' in page.text
 
 
-def test_home_lists_demo_users_with_one_click_act_as(client):
-    page = client.get("/")
-    assert "Demo users" in page.text
-    assert "Act as Gabi" in page.text and "reports to diego" in page.text
+def test_demo_panel_marks_the_current_user(client):
     act_as(client, "fede")
-    assert '<span class="badge active">You</span>' in client.get("/").text
+    page = client.get("/demo")
+    assert '<span class="badge active">Signed in</span>' in page.text
+    assert "Continue as Fede" in page.text and "Sign in as Ana" in page.text
 
 
 def test_decision_explains_outcome_and_highlights_cited_clauses(client):
@@ -273,9 +371,10 @@ def test_history_shows_status_in_words(client):
 
 def test_empty_states_explain_what_to_do(client):
     act_as(client, "bruno")
-    page = client.get("/employee")
-    assert "No submitted expenses yet." in page.text
-    assert "Nothing pending." in page.text
+    assert "No submitted expenses yet." in client.get("/employee").text
+    assert "Nothing waiting for you." in client.get("/team").text
+    act_as(client, "fede")
+    assert "Nothing pending." in client.get("/finance").text
 
 
 def test_finance_separates_uncompilable_clauses_and_links_rules_to_text(client):

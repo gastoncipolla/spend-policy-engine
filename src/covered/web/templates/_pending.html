@@ -4,19 +4,19 @@
 <div class="card">
   {% if pending %}
   <table class="stackable">
-    <thead><tr><th>#</th><th>Employee</th><th>When</th><th>Category</th><th class="num">Amount</th><th>Why it needs approval</th><th>Decide</th></tr></thead>
+    <thead><tr><th>#</th><th>Employee</th><th>When</th><th>Category</th><th class="num">Amount</th><th>Why it needs approval</th><th>Decision</th></tr></thead>
     <tbody>
     {% for item in pending %}
     <tr>
       <td data-label="#">{{ item.expense.id }}</td>
-      <td data-label="Employee"><strong>{{ item.expense.employee_id }}</strong></td>
+      <td data-label="Employee"><strong>{{ names.get(item.expense.employee_id, item.expense.employee_id) }}</strong></td>
       <td data-label="When">{{ item.expense.occurred_at | local_time }}</td>
       <td data-label="Category">{{ categories[item.expense.category] }}</td>
       <td data-label="Amount" class="num">{{ item.expense.amount_minor | money }}</td>
       <td data-label="Why">{% for r in item.decision.reasons %}<div class="why">{{ r.message }}{% if r.clause %}<blockquote class="clause"><span class="cite">{% if r.rule_id %}R{{ r.rule_id }}{% else %}U{{ r.uncompilable_id }}{% endif %}:</span> <mark>“{{ r.clause }}”</mark></blockquote>{% endif %}</div>{% endfor %}</td>
-      <td data-label="Decide" class="decide">
+      <td data-label="Decision" class="decide">
         {% if item.expense.employee_id == actor.id %}
-        <span class="muted small">Your own: your manager or finance resolves it.</span>
+        <span class="muted small">Your own expense:<br>another approver decides.</span>
         {% else %}
         {% for resolution, css in [("approved", "approve"), ("rejected", "reject")] %}
         <form method="post" action="{{ resolve_base }}/expenses/{{ item.expense.id }}/resolve" class="inline">
@@ -30,5 +30,5 @@
     {% endfor %}
     </tbody>
   </table>
-  {% else %}<p class="empty">Nothing pending. Expenses that need approval show up here.</p>{% endif %}
+  {% else %}<p class="empty">{{ empty_text | default("Nothing pending. Expenses that need approval show up here.") }}</p>{% endif %}
 </div>

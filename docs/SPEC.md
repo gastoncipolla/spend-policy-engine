@@ -175,8 +175,9 @@ Errors: JSON `{error: code, message}` with consistent codes (`validation_error`,
 
 - CLI `covered` wraps the same services (not HTTP): `covered serve`, `covered seed`, `covered check --employee ana --amount 80.00 --category meals --at 2026-11-21T21:00`, `covered submit ...`, `covered policy show|compile|activate`. Amounts are typed as decimals by humans and converted to minor units at the edge with `Decimal`, never float.
 - Pages (Jinja2, server-rendered, plain CSS, no build step):
-  - `/` → links to both views and shows the active provider (mock/real).
-  - `/employee` → pick employee, "Will this be covered?" form (check) and "Submit" button, outcome with every reason and its quoted clause, expense history.
+  - `/` → the signed-in user's home (`/employee`), or the demo panel `/demo` when nobody is chosen. `/demo` lists the demo users (roles, what each can do) and signs in as one; a "demo mode" strip, separate from the product chrome, shows who you are, links to it and shows the active provider (mock/real). The top nav lists only the pages the user may open, with a count of what waits for their decision.
+  - `/employee` → "Will this be covered?" form (check) and "Submit" button, outcome with every reason and its quoted clause, expense history.
+  - `/team` → managers only: their team's pending expenses to approve or reject (resolve posts stay at `/employee/expenses/{id}/resolve`).
   - `/finance` → policy text side by side with proposed rules (each rule next to its clause), approve/reject, classify uncompilable clauses, activate, pending expenses to resolve.
   - Clarity over polish: readable, consistent colors for approved/needs_approval/rejected.
 
@@ -210,7 +211,7 @@ tests/        unit (engine, compiler validation, money) + API tests (TestClient)
 
 Roles: `employee`, `manager`, `finance`, stored in the `roles` catalog table and assigned through `employee_roles` (§2). A user can have several roles (a manager also spends). Users have `manager_id` (their own manager) and a policy (via `policy_id`). A manager's team = users whose `manager_id` is that manager. Being someone's manager takes both: the `manager` role and being their `manager_id` (authorization checks both); the database also refuses a `manager_id` that points to a user without the `manager` role.
 
-Identity (no login): each seeded user has a fixed demo token sent as `Authorization: Bearer <token>`. `covered seed` prints the tokens and they are documented as demo-only. Missing or unknown token → 401 `unauthenticated`. The CLI takes `--as <user>`; the pages have an "act as" selector (cookie) that maps to the same tokens.
+Identity (no login): each seeded user has a fixed demo token sent as `Authorization: Bearer <token>`. `covered seed` prints the tokens and they are documented as demo-only. Missing or unknown token → 401 `unauthenticated`. The CLI takes `--as <user>`; the pages have an "act as" demo panel (`/demo`, cookie) that maps to the same tokens.
 
 Security principles (enforced in the service layer, never only in the UI):
 1. **Deny by default**: an action not explicitly allowed is refused.
