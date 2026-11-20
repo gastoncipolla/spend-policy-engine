@@ -33,14 +33,26 @@
           </select>
         </div>
       </div>
-      <label for="occurred_at">When (company time, Buenos Aires)</label>
-      <input id="occurred_at" type="datetime-local" name="occurred_at" required value="{{ form.occurred_at or '' }}">
-      <label for="merchant">Merchant <span class="muted">(optional)</span></label>
-      <input id="merchant" name="merchant" value="{{ form.merchant or '' }}">
-      <label for="justification">Justification <span class="muted">(optional)</span></label>
-      <input id="justification" name="justification" value="{{ form.justification or '' }}">
-      <label for="pre_approval_id">Pre-approval id <span class="muted">(optional)</span></label>
-      <input id="pre_approval_id" name="pre_approval_id" value="{{ form.pre_approval_id or '' }}">
+      <div class="row">
+        <div>
+          <label for="occurred_at">When (company time, Buenos Aires)</label>
+          <input id="occurred_at" type="datetime-local" name="occurred_at" required value="{{ form.occurred_at or '' }}">
+        </div>
+        <div>
+          <label for="merchant">Merchant <span class="muted">(optional)</span></label>
+          <input id="merchant" name="merchant" value="{{ form.merchant or '' }}">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label for="justification">Justification <span class="muted">(optional)</span></label>
+          <input id="justification" name="justification" value="{{ form.justification or '' }}">
+        </div>
+        <div>
+          <label for="pre_approval_id">Pre-approval id <span class="muted">(optional)</span></label>
+          <input id="pre_approval_id" name="pre_approval_id" value="{{ form.pre_approval_id or '' }}">
+        </div>
+      </div>
       <div class="actions">
         <button type="submit" name="action" value="check">Will this be covered?</button>
         <button type="submit" name="action" value="submit" class="secondary">Submit expense</button>
