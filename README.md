@@ -118,14 +118,19 @@ uv run covered serve
 
 ### Model choice
 
-The default is `claude-haiku-5-5`. We compiled both sample policies with Haiku 5.5 and Sonnet 5.5:
-both produced the same rules, except for the "Hotel stays are reimbursed up to USD X per night" clause of each policy.
-Sonnet compiled it as a per-expense `max_amount`, which would reject a legitimate 3-night stay;
-Haiku marked it uncompilable, which is the correct, conservative answer (the expense data has no
-number of nights). Haiku cost about USD 0.0016 per policy (Sonnet about USD 0.02) with 10-12 s
-latency. This is a two-policy sample, not a benchmark: set `COVERED_MODEL=claude-sonnet-5-5` to
-switch back. Every compiled rule is reviewed by finance before it is active, whichever model
-proposed it.
+The default is `claude-haiku-5-5`; set `COVERED_MODEL=claude-sonnet-5-5` to switch.
+
+- First real run (two sample policies, earlier prompt): Sonnet 5.5 compiled "Hotel stays ...
+  up to USD X per night" as a per-expense `max_amount`, which would reject a legitimate
+  3-night stay. Haiku 5.5 marked it uncompilable, the correct answer. The prompt now says
+  per-unit limits are uncompilable.
+- With that prompt, the [compiler eval](evals/compiler/README.md) (11 fictional policies,
+  140 scored clauses per model) puts both models at about 90% accuracy: Haiku 91% with 2
+  unsafe items (a missed conflict flag), Sonnet 90% with none and slightly more consistent.
+  Haiku costs about USD 0.001 per policy, Sonnet about USD 0.015.
+
+So the default rests on cost for an equal result, on a small sample. Every compiled rule is
+reviewed by finance before it is active, whichever model proposed it.
 
 `covered seed` always uses the mock, so the demo data is the same with or without a key. To
 compile your own text, create a new version on the finance page (or with `POST
@@ -147,6 +152,15 @@ uv run ruff format --check
 ```
 
 The tests never call the real API: they use the mock provider or a fake client.
+
+### Compiler eval
+
+`evals/compiler/` holds a small hand-written evaluation of the compiler (per-night limits,
+amount formats, contradictions, prompt injection, a Spanish policy...) and a runner that
+reports accuracy, consistency across repeats, cost and latency per model. See
+[`evals/compiler/README.md`](evals/compiler/README.md) and the latest results in
+`evals/compiler/results/`. It is a small sample (70 expected clauses, 11 fictional policies),
+a sanity check rather than a benchmark.
 
 ## Layout
 
