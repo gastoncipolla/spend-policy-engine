@@ -1,0 +1,26 @@
+{# "Ask Covered": a sentence in, the check form below prefilled. Never a decision. #}
+<section class="card intake" style="margin-top:20px">
+  <h3>Ask Covered</h3>
+  <form method="post" action="/employee/interpret" class="stack">
+    <label for="intake_text">Describe the expense in your own words <span class="muted">(Spanish or English)</span></label>
+    <div class="row">
+      <input id="intake_text" name="text" maxlength="500" required placeholder="Uber to the airport yesterday, USD 45" value="{{ intake_text or '' }}">
+      <div style="flex:0 0 auto"><button type="submit">Interpret</button></div>
+    </div>
+  </form>
+  {% if intake %}
+  <p class="muted">Draft read by {{ intake.provider }} ({{ intake.model }}). It only fills the form: review it, then press <em>Will this be covered?</em> The rules decide, not the AI.</p>
+  {% if intake.missing or intake.flags %}
+  <ul class="intake-flags">
+    {% for field in intake.missing %}
+    <li><span class="badge needs_approval">Missing</span> {{ field | replace("_", " ") }}: {% if field == "category" %}set to Other; pick the right one.{% else %}fill it in.{% endif %}</li>
+    {% endfor %}
+    {% for flag in intake.flags %}
+    <li><span class="badge needs_approval">Check</span> {{ flag.message }}</li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Nothing to flag. Still, check every field.</p>
+  {% endif %}
+  {% endif %}
+</section>

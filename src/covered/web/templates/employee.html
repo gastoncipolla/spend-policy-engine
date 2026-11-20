@@ -9,6 +9,7 @@
 <p class="muted">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
 {% endif %}
 {% else %}
+{% include "_intake.html" %}
 <div class="grid" style="margin-top:20px">
   <section class="card">
     <h3>Expense for {{ actor.name }}</h3>
