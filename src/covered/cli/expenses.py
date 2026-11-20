@@ -1,4 +1,4 @@
-"""`covered expenses list|resolve`."""
+"""`covered expenses list|resolve|parse`."""
 
 from typing import Annotated
 
@@ -6,7 +6,9 @@ import typer
 
 from covered.cli.context import AsUser, database
 from covered.cli.render import print_expense
+from covered.intake import get_intake_provider, parse_expense_text
 from covered.services import employees, expenses
+from covered.services.config import COMPANY_TZ, utc_now
 from covered.store.records import ExpenseStatus
 
 app = typer.Typer(help="List and resolve stored expenses.", no_args_is_help=True)
@@ -43,3 +45,17 @@ def resolve(
             conn, actor, expense_id, ExpenseStatus(resolution)
         )
         print_expense(item)
+
+
+@app.command()
+def parse(
+    text: Annotated[str, typer.Argument(help="The expense in your own words.")],
+    as_user: AsUser = ...,
+) -> None:
+    """Ask Covered: turn a sentence into a draft expense. Evaluates nothing."""
+    with database() as conn:
+        employees.act_as(conn, as_user)
+        result = parse_expense_text(
+            text, get_intake_provider(), now=utc_now(), tz=COMPANY_TZ
+        )
+    typer.echo(result.model_dump_json(indent=2))

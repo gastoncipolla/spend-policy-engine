@@ -6,10 +6,11 @@ from fastapi import FastAPI
 
 from covered.api.errors import install_error_handlers
 from covered.api.request_context import RequestContextMiddleware
-from covered.api.routes import catalog, expenses, policies
+from covered.api.routes import catalog, expenses, intake, policies
 from covered.services.compilation import Compiler
 from covered.services.provider_compiler import default_compiler
 from covered.store.db import open_database, resolve_db_path
+from covered.web import intake as intake_page
 from covered.web import pages
 from covered.web.csrf import CsrfMiddleware
 
@@ -34,6 +35,8 @@ def create_app(
     app.add_middleware(RequestContextMiddleware)
     app.include_router(catalog.router)
     app.include_router(policies.router)
+    app.include_router(intake.router)
     app.include_router(expenses.router)
     pages.install(app)
+    app.include_router(intake_page.router)
     return app

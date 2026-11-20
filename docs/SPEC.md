@@ -129,6 +129,25 @@ Worked example (limit USD 200/month on ground_transport, plus pre-approval thres
 - `GET /expenses?employee_id=` → list with decisions.
 - `POST /expenses/{id}/resolve {resolution: approved | rejected}` → only from `pending`, else 409.
 
+## 6a. Natural-language intake ("Ask Covered")
+
+The employee may describe an expense in a sentence ("cena con un cliente el sábado, USD 120"). The LLM only turns the sentence into a **draft**; the employee reviews it in the check form, and the deterministic engine decides on what they confirm. The LLM never decides coverage, and nothing here evaluates or stores anything.
+
+This is a second, optional LLM use next to compilation (§1.2 describes compilation only). Principle §1.1 still holds: evaluating an expense never calls an LLM, and without a provider the employee simply fills the form.
+
+- `POST /expenses/parse {text}` (any authenticated user; same bearer/cookie auth and CSRF rules) → `{draft, missing, flags, provider, model, meta}`. `draft` = `category`, `amount_minor`, `currency`, `occurred_at`, `merchant`, `description`, `justification`, each nullable. Text is capped at 500 characters (422 above).
+- Providers (`src/covered/intake/`): `AnthropicIntakeProvider` (structured outputs, model `COVERED_INTAKE_MODEL`, default `claude-haiku-5-5`, effort `low`, timeout 20 s, SDK retries 2) and `MockIntakeProvider` (deterministic keyword/regex reader), chosen like the compiler's (§5.1). The provider copies facts literally: the amount as written, the currency only if named, and the date as a structure (`relative_days`, `previous_weekday`, `calendar_date`), never as a computed date. The text goes inside `<expense_text>` tags and is treated as data.
+- **Deterministic validation** (never trust the provider):
+  - category must be in the catalog, else dropped and flagged `unknown_category`;
+  - the amount must appear literally in the text as a whole number (else dropped, `amount_not_in_text`) and parse with the money rules (thousands/decimal separators `1.234,50` and `1,234.50` are both accepted);
+  - only USD: another named currency is a field error `unsupported_currency` and no amount; no currency written (or a bare `$`) → USD with flag `currency_assumed`;
+  - dates are resolved in code against `now` in company time: "ayer" at 23:30 local is the local yesterday, not UTC's; a weekday means the most recent one strictly before today; a day/month without a year is the most recent one on or before today; future dates are flagged `future_date`; no time → noon (or now, for today) with flag `time_not_stated`; the literal date words and the merchant must appear in the text;
+  - more than one expense in the sentence → `multiple_expenses`;
+  - required fields not filled are listed in `missing` (`amount`, `category`, `occurred_at`), never invented.
+- A provider failure (API error, refusal, invalid JSON) returns an empty draft with flag `provider_error`: the employee fills the form by hand.
+- Page: `/employee` has an "Ask Covered" box; `POST /employee/interpret` re-renders the page with the check form prefilled and the flags shown. A missing category is prefilled as `other`, which never auto-approves (§4.2). CLI: `covered expenses parse "<text>" --as <user>`.
+- One log event per parse (`expense_parse`: provider, model, tokens, latency, cost, missing, flag codes), without the text.
+
 ## 7. API (FastAPI, JSON)
 
 ```

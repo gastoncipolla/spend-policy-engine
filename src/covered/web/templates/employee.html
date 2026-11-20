@@ -10,7 +10,9 @@
 {% endif %}
 {% else %}
 <p class="muted lead">Check an expense before you spend: the answer cites the policy clause behind every reason.</p>
-<div class="grid">
+{% include "_intake.html" %}
+<div class="grid" style="margin-top:20px">
+
   <section class="card">
     <h3>Expense for {{ actor.name }}</h3>
     <form method="post" action="/employee" class="stack">

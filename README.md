@@ -146,6 +146,37 @@ from `A-Z a-z 0-9 . _ : -`), and every log line of that request carries the same
 "request_id"}` and logs the stack trace. A version stuck in `compiling` for more than 5
 minutes can be compiled again; the stale lock is taken over and logged.
 
+## Ask Covered: describe an expense in your own words
+
+On the employee page, type a sentence such as `cena con un cliente el sábado, USD 120` or
+`Uber to the airport yesterday $45` and press **Interpret**. The LLM only reads the sentence into a
+draft; the check form is prefilled, you review it, and the deterministic engine decides when you
+press *Will this be covered?*. The LLM never decides coverage; this is the only LLM use besides
+compiling policies, and checking an expense still never calls it.
+
+```bash
+curl -s -X POST http://127.0.0.1:8000/expenses/parse \
+  -H "Authorization: Bearer demo-ana" -H "Content-Type: application/json" \
+  -d '{"text": "cena con un cliente el sábado, USD 120"}'
+# {"draft": {"category": "meals", "amount_minor": 12000, "currency": "USD",
+#            "occurred_at": "2026-11-14T12:00:00-03:00", ...},
+#  "missing": [], "flags": [{"code": "time_not_stated", ...}], "provider": "mock", ...}
+
+uv run covered expenses parse "taxi ayer USD 20" --as ana
+```
+
+Code checks everything the model returns: the category must be in the catalog, the amount must be
+written in the sentence (a number the model made up is dropped), only USD is accepted, relative dates
+("ayer", "el viernes pasado", "last Tuesday") are resolved in code in company time, and future dates,
+missing fields and two expenses in one sentence are flagged instead of guessed. Nothing is evaluated
+or stored by `POST /expenses/parse`. Without an API key a small keyword/regex reader is used. With a
+key the model is `COVERED_INTAKE_MODEL` (default `claude-haiku-5-5`).
+
+Evaluation: `evals/intake/cases.yaml` has 20 hand-labeled sentences (Spanish and English); run
+`uv run --with pyyaml python evals/intake/run.py --provider mock` (or `--provider anthropic --model
+claude-haiku-5-5 --budget 0.05` with a key). Results are in
+[`evals/intake/results/summary.md`](evals/intake/results/summary.md); the sample is small.
+
 ## Tests
 
 ```bash
