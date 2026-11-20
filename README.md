@@ -1,6 +1,8 @@
 # Covered
 
-**Video (demo + code walkthrough):** https://www.loom.com/share/88e2f936963d4fdc902d2d5c475a594b · **One-page write-up:** [`docs/WRITEUP.md`](docs/WRITEUP.md)
+[![Watch the video: demo + code walkthrough (6 min)](docs/video-preview.gif)](https://www.loom.com/share/88e2f936963d4fdc902d2d5c475a594b)
+
+**[Watch the video](https://www.loom.com/share/88e2f936963d4fdc902d2d5c475a594b)** (demo + code walkthrough, 6 min) · **One-page write-up:** [`docs/WRITEUP.md`](docs/WRITEUP.md)
 
 "Will this expense be covered?" Covered turns a written expense policy into explicit rules that
 finance approves, then checks every expense against them with a deterministic engine. Each outcome
