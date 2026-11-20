@@ -13,7 +13,7 @@ from covered.cli.render import print_decision
 from covered.domain import Decision
 from covered.services import employees, expenses
 from covered.services.events import configure_logging
-from covered.services.seed import DEMO_USERS, reset_database
+from covered.services.seed import reset_database
 from covered.services.seed import seed as seed_demo
 from covered.store.db import resolve_db_path
 
@@ -68,13 +68,16 @@ def seed() -> None:
                 f"{len(detail.rules)} rules, {len(detail.uncompilable)} uncompilable, "
                 f"status {detail.status}"
             )
+        typer.secho(f"Seeded {db_path}.", fg="green")
+        typer.echo(
+            "Demo users and tokens (demo only, never use fixed tokens for real):"
+        )
+        for user in employees.demo_users(conn):
+            roles = ", ".join(sorted(user.roles))
+            token = employees.demo_token(conn, user.id)
+            typer.echo(f"  {user.id:<6} {roles:<26} Authorization: Bearer {token}")
     finally:
         conn.close()
-    typer.secho(f"Seeded {db_path}.", fg="green")
-    typer.echo("Demo users and tokens (demo only, never use fixed tokens for real):")
-    for user in DEMO_USERS:
-        roles = ", ".join(user.roles)
-        typer.echo(f"  {user.id:<6} {roles:<20} Authorization: Bearer {user.token}")
 
 
 @app.command()

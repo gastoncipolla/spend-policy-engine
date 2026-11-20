@@ -2,7 +2,7 @@
 
 ana (employee, manager bruno), bruno (employee + manager, manager fede),
 carla (employee, manager diego), diego (employee + manager, manager fede),
-fede (employee + finance, no manager).
+fede (employee + finance + manager, no manager), gabi (employee + finance).
 """
 
 from datetime import datetime

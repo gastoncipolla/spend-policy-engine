@@ -15,7 +15,7 @@ the two sample policies.
 
 ```bash
 uv sync
-uv run covered seed     # reset ./data/covered.db: Sales + Engineering policies, 5 demo users
+uv run covered seed     # reset ./data/covered.db: Sales + Engineering policies, 6 demo users
 uv run covered serve    # http://127.0.0.1:8000
 ```
 
@@ -33,6 +33,8 @@ demo token in a cookie). Each user only sees what their role allows. The sample 
 ### Demo users, roles and tokens
 
 There is no login: each seeded user has a fixed **demo-only** token, printed by `covered seed`.
+The users come from `src/covered/store/seeds/demo.sql`, which only `covered seed` runs (it is
+not a migration, so demo users never land in a real database).
 
 | User | Roles | Policy | Manager | Token |
 |---|---|---|---|---|
@@ -40,7 +42,7 @@ There is no login: each seeded user has a fixed **demo-only** token, printed by 
 | `bruno` | employee, manager | Sales | `fede` | `demo-bruno` |
 | `carla` | employee | Engineering | `diego` | `demo-carla` |
 | `diego` | employee, manager | Engineering | `fede` | `demo-diego` |
-| `fede` | employee, finance | Engineering | none | `demo-fede` |
+| `fede` | employee, finance, manager | Engineering | none | `demo-fede` |
 | `gabi` | employee, finance | Engineering | none | `demo-gabi` |
 
 | Action | employee | manager | finance |
@@ -170,7 +172,7 @@ src/covered/
   domain/     Pydantic models, money (int minor units), categories, errors
   engine/     pure evaluation: one module per rule type, plus combine and period windows
   compiler/   output schema, providers (Anthropic, mock), deterministic validation
-  store/      SQLite (stdlib sqlite3), SQL migrations, repositories
+  store/      SQLite (stdlib sqlite3), SQL migrations, demo seed SQL, repositories
   services/   use cases and transactions; authorization (authz.py), compiler adapter, seed
   api/        FastAPI app and JSON routes
   web/        page routes, Jinja2 templates, CSS

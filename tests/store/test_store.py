@@ -53,6 +53,7 @@ def test_migrations_apply_once(conn):
         "002_roles_and_audit.sql",
         "003_compiling_since.sql",
         "004_data_model_integrity.sql",
+        "005_roles.sql",
     ]
 
 
