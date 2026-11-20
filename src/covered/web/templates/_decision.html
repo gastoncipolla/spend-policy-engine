@@ -1,25 +1,44 @@
-<section class="card decision {{ decision.outcome }}">
-  <span class="badge big {{ decision.outcome }}">{{ outcome_label(decision.outcome) }}</span>
-  <span class="muted">&nbsp;policy {{ decision.policy_id }}, version {{ decision.policy_version }}</span>
-  {% if decision.reasons or decision.warnings %}
+{# One decision: the outcome in words, then every reason with the policy clause it cites. #}
+{% set summaries = {
+  "approved": "Within policy: reimbursed with no review.",
+  "needs_approval": "Allowed only if a manager or finance approves it.",
+  "rejected": "Not reimbursable under this policy.",
+} %}
+<section class="card decision {{ decision.outcome }}" aria-labelledby="decision-outcome">
+  <div class="decision-head">
+    <span id="decision-outcome" class="badge big {{ decision.outcome }}">{{ outcome_label(decision.outcome) }}</span>
+    <div>
+      <strong>{{ summaries[decision.outcome] }}</strong>
+      <div class="muted small">Policy {{ decision.policy_id }}, version {{ decision.policy_version }}</div>
+    </div>
+  </div>
+  {% if decision.reasons %}
+  <h4 class="reasons-title">Why</h4>
   <ul class="reasons">
     {% for reason in decision.reasons %}
     <li>
       <span class="badge {{ reason.outcome }}">{{ outcome_label(reason.outcome) }}</span>
       {{ reason.message }}
-      <span class="source">{% if reason.rule_id %}rule R{{ reason.rule_id }}{% elif reason.uncompilable_id %}clause U{{ reason.uncompilable_id }}{% else %}coverage check{% endif %}</span>
-      {% if reason.clause %}<blockquote>“{{ reason.clause }}”</blockquote>{% endif %}
-    </li>
-    {% endfor %}
-    {% for warning in decision.warnings %}
-    <li>
-      <span class="badge anthropic">Note</span> {{ warning.message }}
-      <span class="source">clause U{{ warning.uncompilable_id }}</span>
-      <blockquote>“{{ warning.clause }}”</blockquote>
+      {% if reason.clause %}
+      <blockquote class="clause"><span class="cite">{% if reason.rule_id %}Rule R{{ reason.rule_id }}{% else %}Clause U{{ reason.uncompilable_id }}{% endif %} cites the policy:</span> <mark>“{{ reason.clause }}”</mark></blockquote>
+      {% else %}
+      <div class="source">Coverage check: no approved rule covers this category.</div>
+      {% endif %}
     </li>
     {% endfor %}
   </ul>
   {% else %}
   <p class="muted">Every rule passed.</p>
+  {% endif %}
+  {# Informational clauses never change the outcome: keep them out of the way. #}
+  {% if decision.warnings %}
+  <details class="notes">
+    <summary>Policy notes ({{ decision.warnings | length }})</summary>
+    <ul>
+      {% for warning in decision.warnings %}
+      <li><span class="source">U{{ warning.uncompilable_id }}</span> “{{ warning.clause }}”</li>
+      {% endfor %}
+    </ul>
+  </details>
   {% endif %}
 </section>

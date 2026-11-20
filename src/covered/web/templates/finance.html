@@ -1,32 +1,40 @@
 {% extends "base.html" %}
 {% block title %}Finance · Covered{% endblock %}
 {% block content %}
+{% set effect_labels = {
+  "requires_review": "requires review (needs approval)",
+  "informational": "informational (note only)",
+} %}
 <h1>Finance</h1>
 {% if denied %}
-<div class="alert error">{{ denied }}</div>
+<div class="alert error" role="alert">{{ denied }}</div>
 {% else %}
 {% if not summary %}
-<p class="muted">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+<p class="empty">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
 {% else %}
-<form method="get" action="/finance" class="row" style="max-width:640px">
-  <div>
-    <select name="policy_id">
-      {% for p in policies %}<option value="{{ p.id }}" {% if p.id == summary.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
-    </select>
-  </div>
-  <div style="flex:0 0 auto"><button class="secondary" type="submit">Open</button></div>
-  <div>
+<p class="muted lead">Review the rules compiled from each policy next to its text, then activate the version. Highlighted text is cited by a rule (R) or an uncompilable clause (U).</p>
+<div class="toolbar">
+  <form method="get" action="/finance" class="row picker">
+    <div>
+      <label for="policy-pick">Policy</label>
+      <select id="policy-pick" name="policy_id">
+        {% for p in policies %}<option value="{{ p.id }}" {% if p.id == summary.id %}selected{% endif %}>{{ p.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="fit"><button class="secondary" type="submit">Open</button></div>
+  </form>
+  <nav class="versions" aria-label="Versions">
+    <span class="muted small">Versions:</span>
     {% for v in summary.versions %}
-      <a href="/finance?policy_id={{ summary.id }}&version={{ v.version }}">v{{ v.version }}</a>
-      <span class="badge {{ v.status }}">{{ v.status }}</span>&nbsp;
+      <a class="version{% if detail and v.version == detail.version %} current{% endif %}" href="/finance?policy_id={{ summary.id }}&version={{ v.version }}" {% if detail and v.version == detail.version %}aria-current="page"{% endif %}>v{{ v.version }} <span class="badge {{ v.status }}">{{ v.status }}</span></a>
     {% endfor %}
-  </div>
-</form>
+  </nav>
+</div>
 
 {% if detail %}
 <h2>{{ summary.name }} · version {{ detail.version }} <span class="badge {{ detail.status }}">{{ detail.status }}</span></h2>
-{% if detail.compile_error %}<div class="alert error">Compile failed: {{ detail.compile_error }}</div>{% endif %}
-{% if detail.compile_meta %}<p class="muted">Compiled by {{ detail.compile_meta.provider or "?" }} · model {{ detail.compile_meta.model }} · prompt {{ detail.compile_meta.prompt_version }}{% if detail.compile_meta.cost_usd %} · USD {{ detail.compile_meta.cost_usd }}{% endif %}</p>{% endif %}
+{% if detail.compile_error %}<div class="alert error" role="alert">Compile failed: {{ detail.compile_error }}</div>{% endif %}
+{% if detail.compile_meta %}<p class="muted small">Compiled by {{ detail.compile_meta.provider or "?" }} · model {{ detail.compile_meta.model }} · prompt {{ detail.compile_meta.prompt_version }}{% if detail.compile_meta.cost_usd %} · USD {{ detail.compile_meta.cost_usd }}{% endif %}</p>{% endif %}
 {% if editable %}
 <div class="actions">
   <form method="post" action="/finance/compile" class="inline">
@@ -38,86 +46,98 @@
     <button type="submit">Activate version {{ detail.version }}</button>
   </form>
 </div>
+<p class="hint">Activation needs every rule approved or rejected and every uncompilable clause confirmed.</p>
 {% endif %}
 
-<div class="grid" style="margin-top:16px">
-  <section class="card">
+<div class="grid">
+  <section class="card sticky">
     <h3>Policy text</h3>
     <div class="policy-text">{{ policy_html }}</div>
   </section>
 
   <section>
+    {% set approved = detail.rules | selectattr("status", "equalto", "approved") | list | length %}
     <div class="card">
-      <h3>Rules</h3>
+      <h3>Rules <span class="count">{{ detail.rules | length }}</span> <span class="muted small">{{ approved }} approved</span></h3>
       {% for rule in detail.rules %}
-      <div class="rule">
-        <span class="label">R{{ rule.id }}</span>
+      <div class="rule" id="rule-R{{ rule.id }}">
+        <a class="label" href="#clause-R{{ rule.id }}" title="Show this clause in the policy text">R{{ rule.id }}</a>
         <strong>{{ describe_rule(rule.params) }}</strong>
         <span class="badge {{ rule.status }}">{{ rule.status }}</span>
-        <span class="badge neutral">{{ rule.origin }}</span>
+        <span class="badge neutral" title="Where this rule came from">{{ rule.origin }}</span>
         {% for flag in rule.flags %}<span class="badge {{ flag }}">{{ flag }}</span>{% endfor %}
-        <blockquote>“{{ rule.clause }}”</blockquote>
+        <blockquote class="clause"><mark>“{{ rule.clause }}”</mark></blockquote>
         {% if editable %}
         <div class="actions">
           {% for status, css in [("approved", "approve"), ("rejected", "reject")] if rule.status != status %}
           <form method="post" action="/finance/rules/{{ rule.id }}" class="inline">
             <input type="hidden" name="policy_id" value="{{ summary.id }}"><input type="hidden" name="version" value="{{ detail.version }}">
-            <button class="small {{ css }}" name="status" value="{{ status }}">{{ "Approve" if status == "approved" else "Reject" }}</button>
+            <button class="small {{ css }}" name="status" value="{{ status }}" aria-label="{{ 'Approve' if status == 'approved' else 'Reject' }} rule R{{ rule.id }}">{{ "Approve" if status == "approved" else "Reject" }}</button>
           </form>
           {% endfor %}
         </div>
         {% endif %}
       </div>
-      {% else %}<p class="muted">No rules yet{% if editable %}: compile this version{% endif %}.</p>{% endfor %}
+      {% else %}<p class="empty">No rules yet{% if editable %}: compile this version{% endif %}.</p>{% endfor %}
     </div>
 
-    <div class="card">
-      <h3>Uncompilable clauses</h3>
+    <div class="card uncompilable">
+      <h3>Uncompilable clauses <span class="count">{{ detail.uncompilable | length }}</span></h3>
+      <p class="muted small">Clauses that cannot become a deterministic rule. They are never silently dropped: finance confirms which categories each one touches and whether it sends expenses to review or only adds a note.</p>
       {% for item in detail.uncompilable %}
       <div class="rule">
-        <span class="label">U{{ item.id }}</span>
-        <strong>{{ item.effect }}</strong> on {{ categories_text(item.categories) }}
+        <a class="label" href="#clause-U{{ item.id }}" title="Show this clause in the policy text">U{{ item.id }}</a>
+        <strong>{{ effect_labels.get(item.effect, item.effect) }}</strong> on {{ categories_text(item.categories) }}
         <span class="badge {{ item.status }}">{{ item.status }}</span>
-        <blockquote>“{{ item.clause }}”</blockquote>
-        <div class="source">{{ item.reason }}</div>
+        <blockquote class="clause"><mark>“{{ item.clause }}”</mark></blockquote>
+        <div class="source"><strong>Why not a rule:</strong> {{ item.reason }}</div>
         {% if editable %}
         <form method="post" action="/finance/uncompilable/{{ item.id }}">
           <input type="hidden" name="policy_id" value="{{ summary.id }}"><input type="hidden" name="version" value="{{ detail.version }}">
-          <div class="checks">
+          <fieldset class="checks">
+            <legend class="small">Applies to</legend>
             <label><input type="checkbox" name="categories" value="*" {% if "*" in item.categories %}checked{% endif %}> All</label>
             {% for code, name in categories.items() %}
             <label><input type="checkbox" name="categories" value="{{ code }}" {% if code in item.categories %}checked{% endif %}> {{ name }}</label>
             {% endfor %}
-          </div>
+          </fieldset>
           <div class="row">
-            <select name="effect">{% for effect in effects %}<option value="{{ effect }}" {% if effect == item.effect %}selected{% endif %}>{{ effect }}</option>{% endfor %}</select>
-            <div style="flex:0 0 auto"><button class="small" type="submit">Confirm</button></div>
+            <div>
+              <label class="small" for="effect-{{ item.id }}">Effect</label>
+              <select id="effect-{{ item.id }}" name="effect">{% for effect in effects %}<option value="{{ effect }}" {% if effect == item.effect %}selected{% endif %}>{{ effect_labels.get(effect, effect) }}</option>{% endfor %}</select>
+            </div>
+            <div class="fit"><button class="small" type="submit" aria-label="Confirm clause U{{ item.id }}">Confirm</button></div>
           </div>
         </form>
         {% endif %}
       </div>
-      {% else %}<p class="muted">None.</p>{% endfor %}
+      {% else %}<p class="empty">None: every clause compiled into a rule.</p>{% endfor %}
     </div>
 
     <div class="card">
       <h3>Uncovered categories</h3>
-      <p class="muted">No approved rule names these, so they always need approval.</p>
+      <p class="muted small">No approved rule names these, so they always need approval.</p>
       {% for code in detail.uncovered_categories %}<span class="badge needs_approval">{{ categories[code] }}</span> {% else %}<span class="muted">None.</span>{% endfor %}
     </div>
   </section>
 </div>
 {% endif %}
 
+{% endif %}
+
+<h2>Pending expenses <span class="count">{{ pending | length }}</span></h2>
+<p class="muted section-hint">Every pending expense in the company. You cannot resolve your own.</p>
+{% set resolve_base = "/finance" %}
+{% include "_pending.html" %}
+
+{% if summary %}
 <h2>New version of {{ summary.name }}</h2>
 <form method="post" action="/finance/versions" class="card stack">
   <input type="hidden" name="policy_id" value="{{ summary.id }}">
-  <textarea name="text" required placeholder="Paste the full policy text">{{ detail.text if detail else "" }}</textarea>
+  <label for="policy-text">Full policy text</label>
+  <textarea id="policy-text" name="text" required placeholder="Paste the full policy text">{{ detail.text if detail else "" }}</textarea>
   <div class="actions"><button type="submit" class="secondary">Create draft</button></div>
 </form>
 {% endif %}
-
-<h2>Pending expenses</h2>
-{% set resolve_base = "/finance" %}
-{% include "_pending.html" %}
 {% endif %}
 {% endblock %}

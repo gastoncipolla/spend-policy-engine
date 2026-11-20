@@ -212,3 +212,77 @@ def test_highlight_escapes_html_and_marks_clauses():
     assert str(html) == (
         '&lt;b&gt;Meals&lt;/b&gt; <mark id="clause-R1">up to USD 80.<sup>R1</sup></mark>'
     )
+
+
+def test_identity_bar_says_who_you_are_and_what_you_can_do(client):
+    anonymous = client.get("/employee")
+    assert "No demo user chosen." in anonymous.text
+
+    page = act_as(client, "bruno", "/employee")
+    assert '<strong class="who-name">Bruno</strong>' in page.text
+    assert '<span class="role role-manager">manager</span>' in page.text
+    assert "approve or reject the team&#39;s pending expenses (never own)" in page.text
+    assert '<a href="/employee" aria-current="page">' in page.text
+
+
+def test_home_lists_demo_users_with_one_click_act_as(client):
+    page = client.get("/")
+    assert "Demo users" in page.text
+    assert "Act as Gabi" in page.text and "reports to diego" in page.text
+    act_as(client, "fede")
+    assert '<span class="badge active">You</span>' in client.get("/").text
+
+
+def test_decision_explains_outcome_and_highlights_cited_clauses(client):
+    act_as(client, "ana")
+    page = client.post("/employee", data=employee_form())
+    assert "Not reimbursable under this policy." in page.text
+    assert (
+        '<span class="cite">Rule R1 cites the policy:</span> '
+        "<mark>“Meals are reimbursed up to USD 80.00 per expense.”</mark>"
+    ) in page.text
+
+
+def test_informational_notes_are_collapsed_below_the_reasons(client):
+    act_as(client, "ana")
+    page = client.post("/employee", data=employee_form()).text
+    # Notes never change the outcome: one closed <details>, after the reasons.
+    assert "<summary>Policy notes (2)</summary>" in page
+    assert (
+        '<details class="notes">' in page and '<details class="notes" open' not in page
+    )
+    assert "“Personal expenses are not reimbursable.”" in page
+    assert page.index("Rule R1 cites the policy:") < page.index("Policy notes")
+    assert "Clause U1 cites the policy:" not in page
+    assert "Keep this policy clause in mind" not in page
+
+
+def test_history_shows_status_in_words(client):
+    act_as(client, "ana")
+    form = employee_form(
+        action="submit",
+        amount="120.00",
+        category="lodging",
+        occurred_at="2026-11-18T12:00",
+    )
+    client.post("/employee", data=form)
+    page = client.get("/employee")
+    assert '<span class="badge pending">Pending approval</span>' in page.text
+    assert 'data-label="Status"' in page.text  # stacks into cards on phones
+
+
+def test_empty_states_explain_what_to_do(client):
+    act_as(client, "bruno")
+    page = client.get("/employee")
+    assert "No submitted expenses yet." in page.text
+    assert "Nothing pending." in page.text
+
+
+def test_finance_separates_uncompilable_clauses_and_links_rules_to_text(client):
+    act_as(client, "fede")
+    page = client.get("/finance?policy_id=1")
+    assert '<a class="label" href="#clause-R1"' in page.text
+    assert '<div class="card uncompilable">' in page.text
+    assert "Why not a rule:" in page.text
+    assert "informational (note only)" in page.text
+    assert '<label for="policy-pick">Policy</label>' in page.text
