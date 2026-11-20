@@ -1,5 +1,6 @@
 """Demo data (SPEC §9, §12a): two policies compiled from the sample texts and
-five demo users with roles, managers and fixed demo tokens.
+six demo users with roles, managers and fixed demo tokens (from
+`store/seeds/demo.sql`).
 
 Seeding goes through the normal path (create version -> compile -> review ->
 activate) acting as the finance user, so the demo exercises the same code and
@@ -8,6 +9,7 @@ the same authorization a real policy would.
 
 import sqlite3
 from dataclasses import dataclass
+from importlib import resources
 from pathlib import Path
 
 from covered.compiler import MockProvider
@@ -17,8 +19,8 @@ from covered.services.authz import Actor
 from covered.services.compilation import Compiler, compile_version
 from covered.services.policies import VersionDetail
 from covered.services.provider_compiler import ProviderCompiler
-from covered.store.db import open_database
-from covered.store.records import Role, RuleStatus, VersionStatus
+from covered.store.db import execute_script, open_database, transaction
+from covered.store.records import RuleStatus, VersionStatus
 
 SAMPLE_POLICIES_DIR = Path(__file__).resolve().parents[3] / "fixtures" / "policies"
 """`<repo>/fixtures/policies` (this file is `<repo>/src/covered/services/`)."""
@@ -37,31 +39,12 @@ SAMPLE_POLICIES = (
 )
 
 
-@dataclass(frozen=True)
-class DemoUser:
-    id: str
-    name: str
-    roles: tuple[Role, ...]
-    manager_id: str | None
+DEMO_USERS_SQL = resources.files("covered.store") / "seeds" / "demo.sql"
+"""The demo users, their roles, managers and demo tokens. Demo data is not a
+migration: it must never land in a real database, so only the seed runs it."""
 
-    @property
-    def token(self) -> str:
-        """Demo-only bearer token. Never use fixed tokens outside a demo."""
-        return f"demo-{self.id}"
-
-
-E, M, F = Role.EMPLOYEE, Role.MANAGER, Role.FINANCE
-DEMO_USERS = (  # managers before their reports (manager_id is a foreign key)
-    DemoUser("fede", "Fede", (E, F), None),
-    # A second finance user, so each finance user's own pending expenses can be
-    # resolved by someone else (separation of duties).
-    DemoUser("gabi", "Gabi", (E, F), None),
-    DemoUser("bruno", "Bruno", (E, M), "fede"),
-    DemoUser("diego", "Diego", (E, M), "fede"),
-    DemoUser("ana", "Ana", (E,), "bruno"),
-    DemoUser("carla", "Carla", (E,), "diego"),
-)
 DEMO_FINANCE = "fede"
+"""The finance user (defined in demo.sql) who loads and activates the policies."""
 
 
 class SeedError(CoveredError):
@@ -85,16 +68,8 @@ def seed(
     Uses the mock provider by default: the demo never needs an API key.
     """
     compiler = compiler or ProviderCompiler(MockProvider())
-    for user in DEMO_USERS:
-        employees.create_employee(
-            conn,
-            user.id,
-            user.name,
-            None,
-            roles=user.roles,
-            manager_id=user.manager_id,
-            token=user.token,
-        )
+    with transaction(conn):
+        execute_script(conn, DEMO_USERS_SQL.read_text(encoding="utf-8"))
     finance = employees.act_as(conn, DEMO_FINANCE)
     activated = []
     for sample in SAMPLE_POLICIES:

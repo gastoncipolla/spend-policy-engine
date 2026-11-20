@@ -23,17 +23,18 @@ def list_policies(conn: sqlite3.Connection) -> list[Policy]:
 
 
 def insert_version(
-    conn: sqlite3.Connection, policy_id: int, text: str
+    conn: sqlite3.Connection, policy_id: int, text: str, created_by: str | None = None
 ) -> PolicyVersion:
-    """Create the next version (1..n) of a policy as a draft."""
+    """Create the next version (1..n) of a policy as a draft, loaded by `created_by`."""
     (last,) = conn.execute(
         "SELECT COALESCE(MAX(version), 0) FROM policy_versions WHERE policy_id = ?",
         (policy_id,),
     ).fetchone()
     conn.execute(
-        "INSERT INTO policy_versions (policy_id, version, text, status, created_at)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (policy_id, last + 1, text, VersionStatus.DRAFT, utc_now_iso()),
+        "INSERT INTO policy_versions"
+        " (policy_id, version, text, status, created_at, created_by)"
+        " VALUES (?, ?, ?, ?, ?, ?)",
+        (policy_id, last + 1, text, VersionStatus.DRAFT, utc_now_iso(), created_by),
     )
     return get_version(conn, policy_id, last + 1)
 

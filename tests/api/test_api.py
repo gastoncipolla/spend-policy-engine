@@ -243,6 +243,20 @@ def test_idempotency_key_reused_with_different_body(client, active):
     )
 
 
+def test_idempotency_keys_are_scoped_per_user(client, db, active):
+    employees.create_employee(db, "bea", "Bea", active, token="demo-bea")
+    for_ana = _submit(client, "key-1")
+    for_bea = client.post(
+        "/expenses",
+        json={**TAXI, "employee_id": "bea", "amount_minor": 7000},
+        headers={"Idempotency-Key": "key-1", **bearer("bea")},
+    )
+    assert for_ana.status_code == for_bea.status_code == 201
+    assert for_bea.json()["expense"]["employee_id"] == "bea"
+    assert for_bea.json()["expense"]["id"] != for_ana.json()["expense"]["id"]
+    assert _submit(client, "key-1").json() == for_ana.json()
+
+
 def test_decisions_cite_rule_and_clause(client, active):
     body = _submit(client, "key-1", amount_minor=9000).json()
     assert body["expense"]["status"] == "pending"

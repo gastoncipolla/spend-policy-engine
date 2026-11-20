@@ -20,10 +20,13 @@ This document is the contract for the MVP. If code and spec disagree, the spec w
 Company       currency = "USD", timezone = "America/Argentina/Buenos_Aires"   (config, not a table)
 Category      code, name     closed catalog: meals, ground_transport, lodging, airfare, software,
                              training, entertainment, alcohol, other
-Employee      id, name, policy_id
+Employee      id, name, policy_id, manager_id?, roles (set of Role codes), token? (demo only)
+Role          code, description   closed catalog: employee, manager, finance (table `roles`)
+EmployeeRole  employee_id, role   (table `employee_roles`, primary key (employee_id, role))
 Policy        id, name
 PolicyVersion policy_id, version (1..n), text, status: draft | compiling | compile_failed | active | retired,
-              compile_error?, compile_meta? (model, prompt_version, input_tokens, output_tokens, latency_ms, cost_usd)
+              compile_error?, compile_meta? (model, prompt_version, input_tokens, output_tokens, latency_ms, cost_usd),
+              created_by? (who loaded the text; null for versions created before it was recorded)
 Rule          id, policy_id, version, type, params (typed per type), clause (literal quote from text),
               status: proposed | approved | rejected, origin: llm | manual, flags[] (e.g. "conflict")
 Uncompilable  id, policy_id, version, clause, reason, categories (list | ["*"]),
@@ -31,9 +34,12 @@ Uncompilable  id, policy_id, version, clause, reason, categories (list | ["*"]),
 Expense       id, employee_id, amount_minor, currency, category, merchant, occurred_at (tz-aware),
               justification?, pre_approval_id?, status: approved | pending | rejected, created_at
 Decision      expense_id?, employee_id, policy_id, policy_version, outcome, reasons[], warnings[], evaluated_at
+              (expense_id is null only for a check; a stored decision always has one, unique per expense)
 Reason        rule_id | uncompilable_id, clause, outcome (rejected | needs_approval), message
-IdempotencyRecord  key, request_hash, response_json, created_at
+IdempotencyRecord  actor_id, key, request_hash, response_json, created_at   (unique per (actor_id, key))
 ```
+
+Storage notes for users: `roles` is reference data loaded by a migration (every database needs it) and must match the `Role` enum (a test checks it). An employee's roles are rows in `employee_roles`, both columns foreign keys. `manager_id` references `employees`, and a SQLite trigger requires it to point to a user with the `manager` role; another refuses to remove the `manager` role from someone who still has reports. Services check the same rule with a clear `validation_error`. Foreign keys are enforced on every connection.
 
 Expense `status` mirrors the decision outcome (`approved` → approved, `needs_approval` → pending, `rejected` → rejected) and changes only through `resolve` (pending → approved | rejected).
 
@@ -102,7 +108,7 @@ Worked example (limit USD 200/month on ground_transport, plus pre-approval thres
 
 ### 5.1 Providers
 
-- `AnthropicProvider` (real): Anthropic Python SDK, structured outputs via `output_config.format` (check the SDK docs; do not guess the API). Model from env `COVERED_MODEL` (default `claude-sonnet-5-5`, decision pending). Policy text goes inside `<policy>` tags and is treated as data. Store `prompt_version` constant.
+- `AnthropicProvider` (real): Anthropic Python SDK, structured outputs via `output_config.format` (check the SDK docs; do not guess the API). Model from env `COVERED_MODEL` (default `claude-haiku-5-5`; see README "Model choice"). Policy text goes inside `<policy>` tags and is treated as data. Store `prompt_version` constant.
 - `MockProvider`: used when `ANTHROPIC_API_KEY` is not set (or `COVERED_PROVIDER=mock`). Returns pre-recorded results from `fixtures/compilations/<sha256 of normalized text>.json` for the sample policies; unknown text → `compile_failed` with a clear "mock mode only supports the sample policies" error. The UI and CLI show which provider is active.
 
 ### 5.2 Failures and backoff
@@ -116,6 +122,7 @@ Worked example (limit USD 200/month on ground_transport, plus pre-approval thres
 
 - `POST /expenses/check` → Decision. Stores nothing, consumes no limit.
 - `POST /expenses` (requires header `Idempotency-Key`) → `{expense, decision}`:
+  - keys are scoped per authenticated user (the actor who submits): two users may send the same key independently;
   - same key + same request hash → return the stored response (same status code and body);
   - same key + different body → 409 `idempotency_key_reused`;
   - evaluation + insert run in one write transaction (`BEGIN IMMEDIATE` on SQLite) so two concurrent submits cannot both consume the same remaining limit.
@@ -176,8 +183,9 @@ Errors: JSON `{error: code, message}` with consistent codes (`validation_error`,
 ## 9. Seed data (fictional, no real people or companies)
 
 - Policies: "Sales" and "Engineering", each with one active version compiled from `fixtures/policies/sales.md` and `fixtures/policies/engineering.md` via the mock fixtures.
-- Employees: Ana, Bruno (Sales), Carla, Diego (Engineering).
-- The sample policies must contain clauses for all five rule types plus these uncompilable cases: "economy class unless the flight is longer than 8 hours" (requires_review, airfare), "client meals require a reasonable business justification" (requires_review or informational — pick and document), "personal expenses are not reimbursable" (informational, *), "prefer partner hotels" (informational, lodging).
+- Employees: Ana, Bruno (Sales), Carla, Diego, Fede, Gabi (Engineering); roles and managers in §12a.
+- The demo users (ids, names, roles, managers, demo tokens) live in `src/covered/store/seeds/demo.sql`, shipped inside the package so the Docker image has it. They are demo data, not reference data, so they are never a migration: migrations run on every database, and demo users with fixed tokens must never land in a real one. `covered seed` resets the database, runs `demo.sql` in one transaction, then creates, compiles, reviews and activates the sample policies through the services (as `fede`) and assigns them.
+- The sample policies must contain clauses for all five rule types plus these uncompilable cases: "economy class unless the flight is longer than 8 hours" (requires_review, airfare), "client meals require a reasonable business justification" (requires_review or informational — pick and document), "personal expenses are not reimbursable" (informational, *), "prefer partner hotels" (informational, lodging), and "hotel stays up to USD X per night" (requires_review, lodging): a per-unit limit (per night, per person, per km...) is not a per-expense `max_amount`, because one expense can cover several units.
 
 ## 10. Observability
 
@@ -200,7 +208,7 @@ tests/        unit (engine, compiler validation, money) + API tests (TestClient)
 
 ## 12a. Roles, permissions and audit
 
-Roles: `employee`, `manager`, `finance`. A user can have several roles (a manager also spends). Users have `manager_id` (their own manager) and a policy (via `policy_id`). A manager's team = users whose `manager_id` is that manager.
+Roles: `employee`, `manager`, `finance`, stored in the `roles` catalog table and assigned through `employee_roles` (§2). A user can have several roles (a manager also spends). Users have `manager_id` (their own manager) and a policy (via `policy_id`). A manager's team = users whose `manager_id` is that manager. Being someone's manager takes both: the `manager` role and being their `manager_id` (authorization checks both); the database also refuses a `manager_id` that points to a user without the `manager` role.
 
 Identity (no login): each seeded user has a fixed demo token sent as `Authorization: Bearer <token>`. `covered seed` prints the tokens and they are documented as demo-only. Missing or unknown token → 401 `unauthenticated`. The CLI takes `--as <user>`; the pages have an "act as" selector (cookie) that maps to the same tokens.
 
@@ -208,7 +216,7 @@ Security principles (enforced in the service layer, never only in the UI):
 1. **Deny by default**: an action not explicitly allowed is refused.
 2. **Object-level authorization**: access is checked against the specific resource, not only the role. Asking for an expense you may not see → 404 `not_found` (do not reveal it exists).
 3. **Separation of duties**: nobody resolves their own expense, finance included (→ 403 `forbidden`, message explains why).
-4. **Every write records who and when**: rule review (`reviewed_by`, `reviewed_at`), uncompilable classification, activation (`activated_by`, `activated_at`), expense resolution (`resolved_by`, `resolved_at`).
+4. **Every write records who and when**: policy version creation (`created_by`, `created_at`), rule review (`reviewed_by`, `reviewed_at`), uncompilable classification, activation (`activated_by`, `activated_at`), expense resolution (`resolved_by`, `resolved_at`).
 
 Permission matrix:
 
@@ -221,7 +229,7 @@ Permission matrix:
 | Create policy/version, compile, review rules, classify, activate | no | no | yes |
 | List employees | self | self + team | all |
 
-Demo users (fictional): `ana` (employee, Sales, manager `bruno`), `bruno` (employee + manager, Sales, manager `fede`), `carla` (employee, Engineering, manager `diego`), `diego` (employee + manager, Engineering, manager `fede`), `fede` and `gabi` (employee + finance, Engineering policy, no manager; two finance users so each one's own pending expenses can be resolved by the other).
+Demo users (fictional): `ana` (employee, Sales, manager `bruno`), `bruno` (employee + manager, Sales, manager `fede`), `carla` (employee, Engineering, manager `diego`), `diego` (employee + manager, Engineering, manager `fede`), `fede` (employee + finance + manager, Engineering policy, no manager; the manager role because bruno and diego report to him) and `gabi` (employee + finance, Engineering policy, no manager); two finance users so each one's own pending expenses can be resolved by the other. Defined in `src/covered/store/seeds/demo.sql` (§9).
 
 Errors: 401 `unauthenticated`, 403 `forbidden`, 404 `not_found` for hidden resources.
 

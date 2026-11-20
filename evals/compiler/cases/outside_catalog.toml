@@ -1,0 +1,24 @@
+description = "Categories that are not in the catalog must not be forced into 'other' (prohibiting 'other' would reject unrelated expenses)."
+policy = """
+# Pinecrest Labs Expense Policy (fictional)
+
+All amounts are in US dollars (USD).
+
+Gym memberships are reimbursed up to USD 50.00 per employee per month.
+Pet care is not reimbursable.
+Home office furniture above USD 300.00 requires a pre-approval ID.
+Software subscriptions are limited to USD 100.00 per employee per calendar month.
+"""
+
+[[uncompilable]]
+clause = "Gym memberships are reimbursed up to USD 50.00 per employee per month."
+
+[[uncompilable]]
+clause = "Pet care is not reimbursable."
+
+[[uncompilable]]
+clause = "Home office furniture above USD 300.00 requires a pre-approval ID."
+
+[[rule]]
+clause = "Software subscriptions are limited to USD 100.00 per employee per calendar month."
+params = { type = "period_limit", category = "software", amount_minor = 10000, period = "month" }

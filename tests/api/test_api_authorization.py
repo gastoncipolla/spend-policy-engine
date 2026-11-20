@@ -206,5 +206,6 @@ def test_policy_reads_are_limited_to_own_policy(client):
 def test_audit_fields_are_exposed(client):
     detail = client.get("/policies/1/versions/1", headers=bearer("fede")).json()
     assert detail["activated_by"] == "fede" and detail["activated_at"]
+    assert detail["created_by"] == "fede"
     assert {rule["reviewed_by"] for rule in detail["rules"]} == {"fede"}
     assert {item["classified_by"] for item in detail["uncompilable"]} == {"fede"}

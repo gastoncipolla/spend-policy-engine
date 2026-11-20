@@ -4,13 +4,15 @@
 <h1>Will this be covered?</h1>
 {% if not actor %}
 {% if users %}
-<p class="muted">Choose who you are with the “act as” selector at the top (demo identities, no login).</p>
+<p class="empty">Choose who you are with the “act as” selector at the top (demo identities, no login).</p>
 {% else %}
-<p class="muted">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+<p class="empty">No employees yet. Run <code>uv run covered seed</code> to load the demo data.</p>
 {% endif %}
 {% else %}
+<p class="muted lead">Check an expense before you spend: the answer cites the policy clause behind every reason.</p>
 {% include "_intake.html" %}
 <div class="grid" style="margin-top:20px">
+
   <section class="card">
     <h3>Expense for {{ actor.name }}</h3>
     <form method="post" action="/employee" class="stack">
@@ -18,7 +20,11 @@
       <div class="row">
         <div>
           <label for="amount">Amount (USD)</label>
-          <input id="amount" name="amount" inputmode="decimal" placeholder="80.00" required value="{{ form.amount or '' }}">
+          <div class="money">
+            <span class="currency" aria-hidden="true">USD</span>
+            <input id="amount" name="amount" inputmode="decimal" placeholder="80.00" required value="{{ form.amount or '' }}" aria-describedby="amount-hint" autocomplete="off">
+          </div>
+          <div id="amount-hint" class="hint">Dollars and cents, e.g. 80.00</div>
         </div>
         <div>
           <label for="category">Category</label>
@@ -29,7 +35,7 @@
       </div>
       <label for="occurred_at">When (company time, Buenos Aires)</label>
       <input id="occurred_at" type="datetime-local" name="occurred_at" required value="{{ form.occurred_at or '' }}">
-      <label for="merchant">Merchant</label>
+      <label for="merchant">Merchant <span class="muted">(optional)</span></label>
       <input id="merchant" name="merchant" value="{{ form.merchant or '' }}">
       <label for="justification">Justification <span class="muted">(optional)</span></label>
       <input id="justification" name="justification" value="{{ form.justification or '' }}">
@@ -39,43 +45,47 @@
         <button type="submit" name="action" value="check">Will this be covered?</button>
         <button type="submit" name="action" value="submit" class="secondary">Submit expense</button>
       </div>
+      <p class="hint"><strong>Check</strong> is a dry run and stores nothing. <strong>Submit</strong> files the expense with the same decision.</p>
     </form>
   </section>
 
-  <section>
+  <section aria-live="polite">
     {% if decision %}
-      {% if submitted %}<p><strong>Submitted as expense #{{ submitted }}.</strong></p>{% else %}<p class="muted">Check only: nothing was stored.</p>{% endif %}
+      {% if submitted %}<p class="result-note submitted"><strong>Submitted as expense #{{ submitted }}.</strong></p>{% else %}<p class="result-note">Check only: nothing was stored.</p>{% endif %}
       {% include "_decision.html" %}
     {% else %}
-      <div class="card muted">Fill in the expense and press <em>Will this be covered?</em> to see the outcome, every reason and the policy clause behind it.</div>
+      <div class="card empty">Fill in the expense and press <em>Will this be covered?</em> to see the outcome, every reason and the policy clause behind it.</div>
     {% endif %}
   </section>
 </div>
 
 {% if is_manager(actor) %}
-<h2>Team pending</h2>
+<h2>Team pending <span class="count">{{ team_pending | length }}</span></h2>
+<p class="muted section-hint">Your team's expenses waiting for you. You cannot resolve your own.</p>
 {% set pending = team_pending %}{% set resolve_base = "/employee" %}
 {% include "_pending.html" %}
 {% endif %}
 
-<h2>History</h2>
+<h2>History <span class="count">{{ history | length }}</span></h2>
 <div class="card">
   {% if history %}
-  <table>
-    <tr><th>#</th><th>When</th><th>Category</th><th>Merchant</th><th class="num">Amount</th><th>Status</th><th>Reasons</th></tr>
+  <table class="stackable">
+    <thead><tr><th>#</th><th>When</th><th>Category</th><th>Merchant</th><th class="num">Amount</th><th>Status</th><th>Reasons</th></tr></thead>
+    <tbody>
     {% for item in history %}
     <tr>
-      <td>{{ item.expense.id }}</td>
-      <td>{{ item.expense.occurred_at | local_time }}</td>
-      <td>{{ categories[item.expense.category] }}</td>
-      <td>{{ item.expense.merchant or "" }}</td>
-      <td class="num">{{ item.expense.amount_minor | money }}</td>
-      <td><span class="badge {{ item.expense.status }}">{{ item.expense.status }}</span></td>
-      <td>{% for r in item.decision.reasons %}<div>{{ r.message }}</div>{% endfor %}</td>
+      <td data-label="#">{{ item.expense.id }}</td>
+      <td data-label="When">{{ item.expense.occurred_at | local_time }}</td>
+      <td data-label="Category">{{ categories[item.expense.category] }}</td>
+      <td data-label="Merchant">{{ item.expense.merchant or "—" }}</td>
+      <td data-label="Amount" class="num">{{ item.expense.amount_minor | money }}</td>
+      <td data-label="Status"><span class="badge {{ item.expense.status }}">{{ status_label(item.expense.status) }}</span>{% if item.expense.resolved_by %}<div class="small muted">by {{ item.expense.resolved_by }}</div>{% endif %}</td>
+      <td data-label="Reasons">{% for r in item.decision.reasons %}<div class="why">{{ r.message }}{% if r.rule_id %} <span class="source">R{{ r.rule_id }}</span>{% elif r.uncompilable_id %} <span class="source">U{{ r.uncompilable_id }}</span>{% endif %}</div>{% else %}<span class="muted">Within policy</span>{% endfor %}</td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">No submitted expenses yet.</p>{% endif %}
+  {% else %}<p class="empty">No submitted expenses yet. Use <em>Submit expense</em> above to file one.</p>{% endif %}
 </div>
 {% endif %}
 {% endblock %}

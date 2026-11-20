@@ -7,7 +7,11 @@ and by tests; no endpoint exposes them.
 import sqlite3
 from collections.abc import Collection
 
-from covered.domain.errors import NotFoundError, UnauthenticatedError
+from covered.domain.errors import (
+    InvalidInputError,
+    NotFoundError,
+    UnauthenticatedError,
+)
 from covered.services import authz
 from covered.services.authz import Actor
 from covered.store import employees as employee_store
@@ -28,8 +32,7 @@ def create_employee(
 ) -> Employee:
     with transaction(conn):
         _require_policy(conn, policy_id)
-        if manager_id is not None and not employee_store.get_employee(conn, manager_id):
-            raise NotFoundError(f"manager {manager_id!r} not found")
+        _require_manager(conn, manager_id)
         return employee_store.insert_employee(
             conn,
             employee_id,
@@ -82,6 +85,19 @@ def list_employees(conn: sqlite3.Connection, actor: Actor) -> list[Employee]:
         for employee in employee_store.list_employees(conn)
         if authz.can_see_employee(actor, employee)
     ]
+
+
+def _require_manager(conn: sqlite3.Connection, manager_id: str | None) -> None:
+    """A manager_id must name a user with the manager role (the DB enforces it too)."""
+    if manager_id is None:
+        return
+    manager = employee_store.get_employee(conn, manager_id)
+    if manager is None:
+        raise NotFoundError(f"manager {manager_id!r} not found")
+    if Role.MANAGER not in manager.roles:
+        raise InvalidInputError(
+            f"{manager_id!r} cannot be a manager: they do not have the manager role"
+        )
 
 
 def _require_policy(conn: sqlite3.Connection, policy_id: int | None) -> None:

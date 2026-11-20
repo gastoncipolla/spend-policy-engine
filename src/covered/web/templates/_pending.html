@@ -3,30 +3,32 @@
    gets no buttons: separation of duties (the services refuse it anyway). #}
 <div class="card">
   {% if pending %}
-  <table>
-    <tr><th>#</th><th>Employee</th><th>When</th><th>Category</th><th class="num">Amount</th><th>Why it needs approval</th><th></th></tr>
+  <table class="stackable">
+    <thead><tr><th>#</th><th>Employee</th><th>When</th><th>Category</th><th class="num">Amount</th><th>Why it needs approval</th><th>Decide</th></tr></thead>
+    <tbody>
     {% for item in pending %}
     <tr>
-      <td>{{ item.expense.id }}</td>
-      <td>{{ item.expense.employee_id }}</td>
-      <td>{{ item.expense.occurred_at | local_time }}</td>
-      <td>{{ categories[item.expense.category] }}</td>
-      <td class="num">{{ item.expense.amount_minor | money }}</td>
-      <td>{% for r in item.decision.reasons %}<div>{{ r.message }}{% if r.clause %}<blockquote>“{{ r.clause }}”</blockquote>{% endif %}</div>{% endfor %}</td>
-      <td style="white-space:nowrap">
+      <td data-label="#">{{ item.expense.id }}</td>
+      <td data-label="Employee"><strong>{{ item.expense.employee_id }}</strong></td>
+      <td data-label="When">{{ item.expense.occurred_at | local_time }}</td>
+      <td data-label="Category">{{ categories[item.expense.category] }}</td>
+      <td data-label="Amount" class="num">{{ item.expense.amount_minor | money }}</td>
+      <td data-label="Why">{% for r in item.decision.reasons %}<div class="why">{{ r.message }}{% if r.clause %}<blockquote class="clause"><span class="cite">{% if r.rule_id %}R{{ r.rule_id }}{% else %}U{{ r.uncompilable_id }}{% endif %}:</span> <mark>“{{ r.clause }}”</mark></blockquote>{% endif %}</div>{% endfor %}</td>
+      <td data-label="Decide" class="decide">
         {% if item.expense.employee_id == actor.id %}
-        <span class="muted">Your own: your manager or finance resolves it.</span>
+        <span class="muted small">Your own: your manager or finance resolves it.</span>
         {% else %}
         {% for resolution, css in [("approved", "approve"), ("rejected", "reject")] %}
         <form method="post" action="{{ resolve_base }}/expenses/{{ item.expense.id }}/resolve" class="inline">
           {% if resolve_base == "/finance" %}<input type="hidden" name="policy_id" value="{{ summary.id if summary else 0 }}"><input type="hidden" name="version" value="{{ detail.version if detail else 0 }}">{% endif %}
-          <button class="small {{ css }}" name="resolution" value="{{ resolution }}">{{ "Approve" if resolution == "approved" else "Reject" }}</button>
+          <button class="small {{ css }}" name="resolution" value="{{ resolution }}" aria-label="{{ 'Approve' if resolution == 'approved' else 'Reject' }} expense #{{ item.expense.id }}">{{ "Approve" if resolution == "approved" else "Reject" }}</button>
         </form>
         {% endfor %}
         {% endif %}
       </td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
-  {% else %}<p class="muted">Nothing pending.</p>{% endif %}
+  {% else %}<p class="empty">Nothing pending. Expenses that need approval show up here.</p>{% endif %}
 </div>

@@ -1,0 +1,36 @@
+description = "Per-night, per-person, per-mile and per-day limits are not per-expense caps: they must be uncompilable."
+policy = """
+# Field Services Travel Policy (fictional)
+
+All amounts are in US dollars (USD).
+
+Hotel rooms are covered up to USD 200.00 per night.
+Team dinners are reimbursed up to USD 60.00 per person.
+Mileage for personal cars is reimbursed at USD 0.70 per mile.
+Meals while travelling are covered up to USD 75.00 per day of travel.
+Flights are reimbursed up to USD 800.00 per ticket.
+Taxi rides are limited to USD 120.00 per employee per week.
+"""
+
+[[uncompilable]]
+clause = "Hotel rooms are covered up to USD 200.00 per night."
+effect = "requires_review"
+
+[[uncompilable]]
+clause = "Team dinners are reimbursed up to USD 60.00 per person."
+effect = "requires_review"
+
+[[uncompilable]]
+clause = "Mileage for personal cars is reimbursed at USD 0.70 per mile."
+
+[[uncompilable]]
+clause = "Meals while travelling are covered up to USD 75.00 per day of travel."
+effect = "requires_review"
+
+[[rule]]
+clause = "Flights are reimbursed up to USD 800.00 per ticket."
+params = { type = "max_amount", category = "airfare", amount_minor = 80000 }
+
+[[rule]]
+clause = "Taxi rides are limited to USD 120.00 per employee per week."
+params = { type = "period_limit", category = "ground_transport", amount_minor = 12000, period = "week" }

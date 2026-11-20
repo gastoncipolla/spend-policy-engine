@@ -52,6 +52,8 @@ def test_migrations_apply_once(conn):
         "001_initial.sql",
         "002_roles_and_audit.sql",
         "003_compiling_since.sql",
+        "004_data_model_integrity.sql",
+        "005_roles.sql",
     ]
 
 
@@ -204,13 +206,54 @@ def test_employee_roles_manager_and_token(conn):
 
 
 def test_idempotency_record_round_trip(conn):
-    assert idempotency.get_record(conn, "k1") is None
-    idempotency.insert_record(conn, "k1", "hash", 201, {"a": 1})
-    record = idempotency.get_record(conn, "k1")
-    assert (record.request_hash, record.status_code, record.response) == (
+    assert idempotency.get_record(conn, "ana", "k1") is None
+    idempotency.insert_record(conn, "ana", "k1", "hash", 201, {"a": 1})
+    record = idempotency.get_record(conn, "ana", "k1")
+    assert (record.actor_id, record.request_hash, record.response) == (
+        "ana",
         "hash",
-        201,
         {"a": 1},
     )
+    assert record.status_code == 201
     with pytest.raises(sqlite3.IntegrityError):
-        idempotency.insert_record(conn, "k1", "other", 201, {})
+        idempotency.insert_record(conn, "ana", "k1", "other", 201, {})
+
+
+def test_idempotency_keys_are_scoped_per_actor(conn):
+    idempotency.insert_record(conn, "ana", "k1", "hash-a", 201, {"a": 1})
+    idempotency.insert_record(conn, "bruno", "k1", "hash-b", 201, {"b": 2})
+    assert idempotency.get_record(conn, "ana", "k1").request_hash == "hash-a"
+    assert idempotency.get_record(conn, "bruno", "k1").request_hash == "hash-b"
+    assert idempotency.get_record(conn, "carla", "k1") is None
+
+
+def _decision(expense_id: int | None) -> Decision:
+    return Decision(
+        expense_id=expense_id,
+        employee_id="ana",
+        policy_id=1,
+        policy_version=1,
+        outcome=Outcome.APPROVED,
+        reasons=[],
+        warnings=[],
+        evaluated_at=datetime(2026, 11, 2, 15, 0, tzinfo=TZ),
+    )
+
+
+def test_decision_without_expense_is_never_stored(conn):
+    with pytest.raises(ValueError, match="submitted expenses"):
+        expenses.insert_decision(conn, _decision(None))
+    # The schema enforces it too, below the repository.
+    with pytest.raises(sqlite3.IntegrityError, match="NOT NULL"):
+        conn.execute(
+            "INSERT INTO decisions (expense_id, employee_id, policy_id, policy_version,"
+            " outcome, reasons, warnings, evaluated_at)"
+            " VALUES (NULL, 'ana', 1, 1, 'approved', '[]', '[]', 'x')"
+        )
+    assert conn.execute("SELECT COUNT(*) FROM decisions").fetchone()[0] == 0
+
+
+def test_version_records_created_by(conn):
+    policy = policies.insert_policy(conn, "Sales")
+    assert policies.insert_version(conn, policy.id, "v1", "fede").created_by == "fede"
+    assert policies.insert_version(conn, policy.id, "v2").created_by is None
