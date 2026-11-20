@@ -5,7 +5,8 @@ finance approves, then checks every expense against them with a deterministic en
 quotes the policy clause behind it. An LLM is used only once per policy version, to propose rules;
 checking an expense never calls it.
 
-The contract is [`docs/SPEC.md`](docs/SPEC.md).
+The contract is [`docs/SPEC.md`](docs/SPEC.md). How the code is organized, the request flows and the
+design patterns it uses (with links to the code) are in [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
 ## Quickstart
 
@@ -177,3 +178,5 @@ src/covered/
 fixtures/     sample policies and hand-written mock compilations
 tests/        domain, engine, compiler, store, services, api, web, cli, integration
 ```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the layer diagram and design patterns.
