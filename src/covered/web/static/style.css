@@ -78,7 +78,9 @@ header.top .provider { margin-left: auto; font-size: 14px; color: var(--muted); 
 .role-manager { color: var(--needs); }
 .role-finance { color: var(--accent); }
 
-main { max-width: min(1680px, 100%); margin: 0 auto; padding: 20px clamp(16px, 3vw, 40px) 48px; }
+main { max-width: 1440px; margin: 0 auto; padding: 20px clamp(16px, 3vw, 40px) 48px; }
+/* Header bars span the screen, but their content lines up with the centered page. */
+header.top, .identity { padding-inline: max(clamp(16px, 3vw, 40px), calc((100% - 1440px) / 2 + clamp(16px, 3vw, 40px))); }
 h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
 h2 { font-size: 20px; margin: 36px 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 h3 { font-size: 16px; margin: 0 0 10px; }
