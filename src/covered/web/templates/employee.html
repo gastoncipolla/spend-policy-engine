@@ -32,7 +32,7 @@
           <label for="amount">Amount (USD)</label>
           <div class="money">
             <span class="currency" aria-hidden="true">USD</span>
-            <input id="amount" name="amount" inputmode="decimal" placeholder="80.00" required value="{{ form.amount or '' }}" aria-describedby="amount-hint" autocomplete="off">
+            <input id="amount" name="amount" inputmode="decimal" placeholder="0.00" required value="{{ form.amount or '' }}" aria-describedby="amount-hint" autocomplete="off">
           </div>
           <div id="amount-hint" class="hint">Dollars and cents, e.g. 80.00</div>
         </div>
