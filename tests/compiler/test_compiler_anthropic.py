@@ -90,6 +90,8 @@ def test_prompt_marks_per_unit_limits_as_uncompilable():
     prompt = " ".join(SYSTEM_PROMPT.split())
     assert "per night, per person" in prompt
     assert "cannot be expressed as max_amount" in prompt
+    # Not over-applied: a ticket or a ride is one expense (eval regression).
+    assert '"per ticket", "per ride"' in prompt
 
 
 def test_unknown_model_has_no_cost():
