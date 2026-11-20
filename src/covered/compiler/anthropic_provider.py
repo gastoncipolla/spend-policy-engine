@@ -20,12 +20,14 @@ from covered.compiler.prompt import PROMPT_VERSION, SYSTEM_PROMPT, user_message
 from covered.compiler.result import CompileMeta, ProviderError, ProviderReply
 from covered.compiler.schema import CompilationResult
 
-DEFAULT_MODEL = "claude-sonnet-5-5"
+DEFAULT_MODEL = "claude-haiku-5-5"
+"""Override with `COVERED_MODEL` (e.g. `claude-sonnet-5-5`). See README "Model choice"."""
 MAX_RETRIES = 3
 TIMEOUT_SECONDS = 60.0
 MAX_TOKENS = 16000
 
 PRICES_PER_MTOK: dict[str, tuple[Decimal, Decimal]] = {
+    "claude-haiku-5-5": (Decimal("0.10"), Decimal("0.50")),
     "claude-sonnet-5-5": (Decimal(2), Decimal(10)),
 }
 """USD per million (input, output) tokens. Unknown models get `cost_usd=None`."""

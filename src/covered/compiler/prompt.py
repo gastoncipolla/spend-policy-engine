@@ -2,7 +2,7 @@
 
 from covered.domain import CATEGORY_NAMES
 
-PROMPT_VERSION = "2026-11-19.1"
+PROMPT_VERSION = "2026-11-20.1"
 
 _CATALOG = ", ".join(code.value for code in CATEGORY_NAMES)
 
@@ -24,6 +24,11 @@ Rule types (use exactly these; always include the "type" field):
   {{"start": "HH:MM", "end": "HH:MM"}} (end excluded) or null.
 
 Amounts are integer minor units of USD (USD 80.00 -> 8000).
+
+max_amount caps one whole expense. A limit per unit inside an expense (per
+night, per person, per km or mile, per day of travel...) cannot be expressed as
+max_amount, because one expense can cover several units (a 3-night hotel stay
+is one expense). Put such clauses in "uncompilable" instead of guessing.
 Categories must come from this closed catalog: {_CATALOG}.
 
 Every rule and every uncompilable item must have a "clause" that is an exact,

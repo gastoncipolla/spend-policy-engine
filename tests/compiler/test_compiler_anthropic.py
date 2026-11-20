@@ -16,6 +16,7 @@ from covered.compiler import (
     compile_text,
     get_provider,
 )
+from covered.compiler.prompt import SYSTEM_PROMPT
 from covered.domain.errors import InvalidInputError
 
 REQUEST = httpx2.Request("POST", "https://api.anthropic.com/v1/messages")
@@ -71,6 +72,24 @@ def test_success_sends_structured_output_request_and_reports_meta():
     assert (meta.input_tokens, meta.output_tokens) == (1000, 500)
     assert meta.cost_usd == Decimal("0.007")  # 1000 * $2/M + 500 * $10/M
     assert meta.latency_ms is not None
+
+
+def test_haiku_has_a_price():
+    outcome, _ = compile_with(response(), model="claude-haiku-5-5")
+    assert outcome.meta.cost_usd == Decimal("0.00035")  # 1000 * $0.10/M + 500 * $0.50/M
+
+
+def test_default_model_is_haiku_and_overridable(monkeypatch):
+    monkeypatch.delenv("COVERED_MODEL", raising=False)
+    assert AnthropicProvider(client=FakeClient(response())).model == "claude-haiku-5-5"
+    monkeypatch.setenv("COVERED_MODEL", "claude-sonnet-5-5")
+    assert AnthropicProvider(client=FakeClient(response())).model == "claude-sonnet-5-5"
+
+
+def test_prompt_marks_per_unit_limits_as_uncompilable():
+    prompt = " ".join(SYSTEM_PROMPT.split())
+    assert "per night, per person" in prompt
+    assert "cannot be expressed as max_amount" in prompt
 
 
 def test_unknown_model_has_no_cost():
