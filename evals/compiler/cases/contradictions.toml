@@ -1,0 +1,33 @@
+description = "Two different meal caps must both be compiled and flagged as a conflict (finance decides); a conditional exception to a prohibition must not be compiled."
+policy = """
+# Contoso Sales Expense Policy (fictional)
+
+All amounts are in US dollars (USD).
+
+Meals are reimbursed up to USD 50.00 per expense.
+Flights are reimbursed up to USD 700.00 per ticket.
+Alcohol is not reimbursable.
+Update from 2026: meals are reimbursed up to USD 65.00 per expense.
+Alcohol served at client dinners is reimbursed.
+"""
+
+[[rule]]
+clause = "Meals are reimbursed up to USD 50.00 per expense."
+params = { type = "max_amount", category = "meals", amount_minor = 5000 }
+flags = ["conflict"]
+
+[[rule]]
+clause = "Update from 2026: meals are reimbursed up to USD 65.00 per expense."
+params = { type = "max_amount", category = "meals", amount_minor = 6500 }
+flags = ["conflict"]
+
+[[rule]]
+clause = "Flights are reimbursed up to USD 700.00 per ticket."
+params = { type = "max_amount", category = "airfare", amount_minor = 70000 }
+
+[[rule]]
+clause = "Alcohol is not reimbursable."
+params = { type = "prohibited_category", category = "alcohol" }
+
+[[uncompilable]]
+clause = "Alcohol served at client dinners is reimbursed."

@@ -1,0 +1,27 @@
+description = "Weekday and hour windows, with and without the written-justification review path."
+policy = """
+# Brightside Support Expense Policy (fictional)
+
+All amounts are in US dollars (USD).
+
+Ground transport is reimbursed only Monday to Friday between 07:00 and 21:00.
+Meals bought on Saturdays or Sundays are not reimbursable.
+Entertainment is reimbursable between 12:00 and 23:00 any day; outside those hours, an expense with a written justification goes to manager review.
+Lodging is reimbursed up to USD 150.00 per expense.
+"""
+
+[[rule]]
+clause = "Ground transport is reimbursed only Monday to Friday between 07:00 and 21:00."
+params = { type = "time_restriction", categories = ["ground_transport"], allowed_weekdays = [0, 1, 2, 3, 4], allowed_hours = { start = "07:00", end = "21:00" }, justification_allows_review = false }
+
+[[rule]]
+clause = "Meals bought on Saturdays or Sundays are not reimbursable."
+params = { type = "time_restriction", categories = ["meals"], allowed_weekdays = [0, 1, 2, 3, 4], justification_allows_review = false }
+
+[[rule]]
+clause = "Entertainment is reimbursable between 12:00 and 23:00 any day; outside those hours, an expense with a written justification goes to manager review."
+params = { type = "time_restriction", categories = ["entertainment"], allowed_weekdays = [0, 1, 2, 3, 4, 5, 6], allowed_hours = { start = "12:00", end = "23:00" }, justification_allows_review = true }
+
+[[rule]]
+clause = "Lodging is reimbursed up to USD 150.00 per expense."
+params = { type = "max_amount", category = "lodging", amount_minor = 15000 }

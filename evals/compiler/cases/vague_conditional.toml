@@ -1,0 +1,24 @@
+description = "Vague or conditional clauses need human judgement; only the plain cap compiles."
+policy = """
+# Harbor Freight Ops Expense Policy (fictional)
+
+All amounts are in US dollars (USD).
+
+Employees should keep expenses reasonable.
+Business class is allowed on flights longer than 6 hours.
+Client gifts need approval from the head of sales.
+Training courses are reimbursed up to USD 1,000.00 per expense.
+"""
+
+[[uncompilable]]
+clause = "Employees should keep expenses reasonable."
+
+[[uncompilable]]
+clause = "Business class is allowed on flights longer than 6 hours."
+
+[[uncompilable]]
+clause = "Client gifts need approval from the head of sales."
+
+[[rule]]
+clause = "Training courses are reimbursed up to USD 1,000.00 per expense."
+params = { type = "max_amount", category = "training", amount_minor = 100000 }
