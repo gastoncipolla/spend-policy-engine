@@ -23,7 +23,8 @@ Category      code, name     closed catalog: meals, ground_transport, lodging, a
 Employee      id, name, policy_id
 Policy        id, name
 PolicyVersion policy_id, version (1..n), text, status: draft | compiling | compile_failed | active | retired,
-              compile_error?, compile_meta? (model, prompt_version, input_tokens, output_tokens, latency_ms, cost_usd)
+              compile_error?, compile_meta? (model, prompt_version, input_tokens, output_tokens, latency_ms, cost_usd),
+              created_by? (who loaded the text; null for versions created before it was recorded)
 Rule          id, policy_id, version, type, params (typed per type), clause (literal quote from text),
               status: proposed | approved | rejected, origin: llm | manual, flags[] (e.g. "conflict")
 Uncompilable  id, policy_id, version, clause, reason, categories (list | ["*"]),
@@ -31,8 +32,9 @@ Uncompilable  id, policy_id, version, clause, reason, categories (list | ["*"]),
 Expense       id, employee_id, amount_minor, currency, category, merchant, occurred_at (tz-aware),
               justification?, pre_approval_id?, status: approved | pending | rejected, created_at
 Decision      expense_id?, employee_id, policy_id, policy_version, outcome, reasons[], warnings[], evaluated_at
+              (expense_id is null only for a check; a stored decision always has one, unique per expense)
 Reason        rule_id | uncompilable_id, clause, outcome (rejected | needs_approval), message
-IdempotencyRecord  key, request_hash, response_json, created_at
+IdempotencyRecord  actor_id, key, request_hash, response_json, created_at   (unique per (actor_id, key))
 ```
 
 Expense `status` mirrors the decision outcome (`approved` → approved, `needs_approval` → pending, `rejected` → rejected) and changes only through `resolve` (pending → approved | rejected).
@@ -116,6 +118,7 @@ Worked example (limit USD 200/month on ground_transport, plus pre-approval thres
 
 - `POST /expenses/check` → Decision. Stores nothing, consumes no limit.
 - `POST /expenses` (requires header `Idempotency-Key`) → `{expense, decision}`:
+  - keys are scoped per authenticated user (the actor who submits): two users may send the same key independently;
   - same key + same request hash → return the stored response (same status code and body);
   - same key + different body → 409 `idempotency_key_reused`;
   - evaluation + insert run in one write transaction (`BEGIN IMMEDIATE` on SQLite) so two concurrent submits cannot both consume the same remaining limit.
@@ -189,7 +192,7 @@ Security principles (enforced in the service layer, never only in the UI):
 1. **Deny by default**: an action not explicitly allowed is refused.
 2. **Object-level authorization**: access is checked against the specific resource, not only the role. Asking for an expense you may not see → 404 `not_found` (do not reveal it exists).
 3. **Separation of duties**: nobody resolves their own expense, finance included (→ 403 `forbidden`, message explains why).
-4. **Every write records who and when**: rule review (`reviewed_by`, `reviewed_at`), uncompilable classification, activation (`activated_by`, `activated_at`), expense resolution (`resolved_by`, `resolved_at`).
+4. **Every write records who and when**: policy version creation (`created_by`, `created_at`), rule review (`reviewed_by`, `reviewed_at`), uncompilable classification, activation (`activated_by`, `activated_at`), expense resolution (`resolved_by`, `resolved_at`).
 
 Permission matrix:
 

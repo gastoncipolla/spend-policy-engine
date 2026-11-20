@@ -78,7 +78,7 @@ sequenceDiagram
     S->>A: require_own_expense (403 if not the caller's)
     S->>S: request_hash = sha256(canonical JSON)
     S->>DB: BEGIN IMMEDIATE (write lock)
-    S->>DB: idempotency record for key?
+    S->>DB: idempotency record for (actor, key)?
     alt same key, same hash
         DB-->>S: stored response
         S-->>R: replay (same status, same body)
@@ -279,7 +279,8 @@ actually in the code are listed.
   [`store/idempotency.py`](../src/covered/store/idempotency.py); the employee page puts a fresh key in
   a hidden field, so a browser re-post is a replay.
 - **Why:** a retried submit (network timeout, double click) must not create a second expense or
-  consume the limit twice. Same key and same body returns the stored response; same key and a
+  consume the limit twice. Keys are scoped per user (primary key `(actor_id, key)`), so two users
+  never collide. Same key and same body returns the stored response; same key and a
   different body is 409. The check and the insert are in the same transaction, so two concurrent
   retries cannot both pass.
 - **Trade-off:** keys never expire (no cleanup job), and the hash is over the validated request, so
