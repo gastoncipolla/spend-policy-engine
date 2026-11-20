@@ -1,0 +1,57 @@
+description = "The Engineering sample policy (same expectations as the mock fixture)."
+policy_file = "fixtures/policies/engineering.md"
+
+[[rule]]
+clause = "Meals are reimbursed up to USD 50.00 per expense."
+params = { type = "max_amount", category = "meals", amount_minor = 5000 }
+
+[[rule]]
+clause = "Ground transport (taxis, rideshare, trains) is limited to USD 100.00 per employee per week."
+params = { type = "period_limit", category = "ground_transport", amount_minor = 10000, period = "week" }
+
+[[rule]]
+clause = "Ground transport is reimbursable Monday to Friday only; a weekend ride with a written justification goes to manager review."
+params = { type = "time_restriction", categories = ["ground_transport"], allowed_weekdays = [0, 1, 2, 3, 4], justification_allows_review = true }
+
+[[rule]]
+clause = "Flights are reimbursed up to USD 700.00 per ticket."
+params = { type = "max_amount", category = "airfare", amount_minor = 70000 }
+
+[[rule]]
+clause = "Software subscriptions are limited to USD 300.00 per employee per calendar month."
+params = { type = "period_limit", category = "software", amount_minor = 30000, period = "month" }
+
+[[rule]]
+clause = "Training courses and conferences are reimbursed up to USD 2,000.00 per expense."
+params = { type = "max_amount", category = "training", amount_minor = 200000 }
+
+[[rule]]
+clause = "Software or training expenses above USD 500.00 require a pre-approval ID from your manager."
+params = { type = "pre_approval_threshold", amount_minor = 50000, categories = ["software", "training"] }
+
+[[rule]]
+clause = "Alcohol is not reimbursable."
+params = { type = "prohibited_category", category = "alcohol" }
+
+[[rule]]
+clause = "Entertainment is not reimbursable for the Engineering team."
+params = { type = "prohibited_category", category = "entertainment" }
+
+[[uncompilable]]
+clause = "Client meals require a reasonable business justification."
+
+[[uncompilable]]
+clause = "Hotel stays are reimbursed up to USD 180.00 per night."
+effect = "requires_review"
+
+[[uncompilable]]
+clause = "We prefer partner hotels whenever one is available."
+effect = "informational"
+
+[[uncompilable]]
+clause = "Book economy class unless the flight is longer than 8 hours."
+effect = "requires_review"
+
+[[uncompilable]]
+clause = "Personal expenses are not reimbursable."
+effect = "informational"
