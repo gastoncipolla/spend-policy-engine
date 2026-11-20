@@ -3,17 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
   <title>{% block title %}Covered{% endblock %}</title>
   <link rel="stylesheet" href="{{ url_for('static', path='style.css') }}">
 </head>
 <body>
   <header class="top">
     <a class="brand" href="/">Covered</a>
-    <nav>
-      <a href="/employee">Employee</a>
-      {% if actor and is_finance(actor) %}<a href="/finance">Finance</a>{% endif %}
+    <nav aria-label="Main">
+      <a href="/employee" {% if here == "/employee" %}aria-current="page"{% endif %}>Employee</a>
+      {% if actor and is_finance(actor) %}<a href="/finance" {% if here == "/finance" %}aria-current="page"{% endif %}>Finance</a>{% endif %}
       <a href="/docs">API</a>
     </nav>
+    <span class="provider">Compiler:
+      <span class="badge {{ provider }}">{{ provider }}{% if provider == "mock" %} (sample policies only){% elif provider == "anthropic" %} (real LLM){% endif %}</span>
+    </span>
+  </header>
+  <div class="identity{% if not actor %} nobody{% endif %}">
+    <div class="who" role="status">
+      {% if actor %}
+      <span class="muted">You are</span> <strong class="who-name">{{ actor.name }}</strong>
+      {% for role in actor.roles | sort %}<span class="role role-{{ role }}">{{ role }}</span>{% endfor %}
+      <span class="can muted">Can: {{ role_abilities(actor) | join("; ") }}.</span>
+      {% else %}
+      <strong>No demo user chosen.</strong> <span class="muted">Pick one to see what their role allows.</span>
+      {% endif %}
+    </div>
     <form method="post" action="/act-as" class="act-as">
       <label for="act-as">Act as</label>
       <select id="act-as" name="user_id" onchange="this.form.submit()">
@@ -23,13 +38,10 @@
       <input type="hidden" name="next" value="{{ here }}">
       <noscript><button class="small secondary" type="submit">Switch</button></noscript>
     </form>
-    <span class="provider">Compiler provider:
-      <span class="badge {{ provider }}">{{ provider }}{% if provider == "mock" %} (sample policies only){% elif provider == "anthropic" %} (real LLM){% endif %}</span>
-    </span>
-  </header>
+  </div>
   <main>
-    {% if error %}<div class="alert error">{{ error }}</div>{% endif %}
-    {% if notice %}<div class="alert notice">{{ notice }}</div>{% endif %}
+    {% if error %}<div class="alert error" role="alert"><strong>Error:</strong> {{ error }}</div>{% endif %}
+    {% if notice %}<div class="alert notice" role="status"><strong>Done:</strong> {{ notice }}</div>{% endif %}
     {% block content %}{% endblock %}
   </main>
 </body>

@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
 <h1>Will this expense be covered?</h1>
-<p class="muted">Written expense policies, compiled into explicit rules that finance approves.
+<p class="muted lead">Written expense policies, compiled into explicit rules that finance approves.
 Every expense is evaluated deterministically and every outcome cites the policy clause behind it.</p>
 
 <div class="tiles">
   <a class="card" href="/employee">
     <h3>Employee view →</h3>
-    <p class="muted">Check an expense before you spend, submit it, and see your history.</p>
+    <p class="muted">Check an expense before you spend, submit it, and see your history.{% if actor and is_manager(actor) %} Managers also resolve their team's pending expenses here.{% endif %}</p>
   </a>
   {% if actor and is_finance(actor) %}
   <a class="card" href="/finance">
@@ -18,14 +18,15 @@ Every expense is evaluated deterministically and every outcome cites the policy 
 </div>
 
 {% if not actor %}
-<p class="muted">Choose who you are with the “act as” selector at the top: each demo user sees only what their role allows.</p>
+<p class="empty">Choose who you are with the “act as” selector at the top: each demo user sees only what their role allows.</p>
 {% endif %}
 
 <h2>Policies</h2>
 <div class="card">
   {% if policies %}
   <table>
-    <tr><th>Policy</th><th>Active version</th><th>Employees</th></tr>
+    <thead><tr><th>Policy</th><th>Active version</th><th>Employees</th></tr></thead>
+    <tbody>
     {% for policy in policies %}
     <tr>
       <td>{% if is_finance(actor) %}<a href="/finance?policy_id={{ policy.id }}">{{ policy.name }}</a>{% else %}{{ policy.name }}{% endif %}</td>
@@ -33,9 +34,38 @@ Every expense is evaluated deterministically and every outcome cites the policy 
       <td>{% for e in employees if e.policy_id == policy.id %}{{ e.name }}{% if not loop.last %}, {% endif %}{% endfor %}</td>
     </tr>
     {% endfor %}
+    </tbody>
   </table>
   {% else %}
-  <p class="muted">{% if actor %}No policies to show.{% else %}Nothing to show yet.{% endif %} Run <code>uv run covered seed</code> to load the demo data.</p>
+  <p class="empty">{% if actor %}No policies to show.{% else %}Nothing to show yet.{% endif %} Run <code>uv run covered seed</code> to load the demo data.</p>
   {% endif %}
 </div>
+
+{% if users %}
+<h2>Demo users</h2>
+<p class="muted section-hint">No login: pick a user to see the app as them. Permissions are enforced on the server, not only hidden in the page.</p>
+<div class="card">
+  <table class="stackable users">
+    <thead><tr><th>User</th><th>Roles</th><th>Can</th><th></th></tr></thead>
+    <tbody>
+    {% for u in users %}
+    <tr{% if actor and u.id == actor.id %} class="me"{% endif %}>
+      <td data-label="User"><strong>{{ u.name }}</strong>{% if u.manager_id %} <span class="small muted">reports to {{ u.manager_id }}</span>{% endif %}</td>
+      <td data-label="Roles">{% for role in u.roles | sort %}<span class="role role-{{ role }}">{{ role }}</span>{% endfor %}</td>
+      <td data-label="Can" class="small">{{ role_abilities(u) | join("; ") }}</td>
+      <td class="decide">
+        {% if actor and u.id == actor.id %}<span class="badge active">You</span>{% else %}
+        <form method="post" action="/act-as" class="inline">
+          <input type="hidden" name="user_id" value="{{ u.id }}">
+          <input type="hidden" name="next" value="{{ '/finance' if is_finance(u) else '/employee' }}">
+          <button class="small secondary" type="submit">Act as {{ u.name }}</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
 {% endblock %}
