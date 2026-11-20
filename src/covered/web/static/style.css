@@ -78,7 +78,7 @@ header.top .provider { margin-left: auto; font-size: 14px; color: var(--muted); 
 .role-manager { color: var(--needs); }
 .role-finance { color: var(--accent); }
 
-main { max-width: 1200px; margin: 0 auto; padding: 28px 16px 64px; }
+main { max-width: min(1680px, 100%); margin: 0 auto; padding: 20px clamp(16px, 3vw, 40px) 48px; }
 h1 { font-size: 28px; line-height: 1.2; margin: 0 0 6px; }
 h2 { font-size: 20px; margin: 36px 0 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 h3 { font-size: 16px; margin: 0 0 10px; }
@@ -98,7 +98,7 @@ h4 { font-size: 13px; margin: 0; text-transform: uppercase; letter-spacing: .05e
 }
 .empty { color: var(--muted); font-style: italic; }
 .card.empty { border-style: dashed; padding: 28px 20px; text-align: center; }
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; align-items: start; }
+.grid { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 24px; align-items: start; }
 @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
 
 /* Badges: always text, color only reinforces it; an icon makes the outcome scannable */
@@ -158,6 +158,7 @@ input, select, textarea {
   font: inherit; padding: 8px 10px; border: 1px solid var(--muted); border-radius: 6px;
   width: 100%; background: var(--paper); color: var(--ink);
 }
+input, select { height: 44px; }
 textarea { min-height: 160px; font-family: ui-monospace, Menlo, monospace; font-size: 14px; }
 .money { display: flex; align-items: stretch; }
 .money .currency {
@@ -167,7 +168,7 @@ textarea { min-height: 160px; font-family: ui-monospace, Menlo, monospace; font-
 .money input {
   border-radius: 0 6px 6px 0; font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums;
 }
-.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: end; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: start; }
 .row > * { flex: 1 1 160px; }
 .row > .fit { flex: 0 0 auto; }
 button {
