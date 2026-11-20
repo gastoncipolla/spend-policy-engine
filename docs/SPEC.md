@@ -102,7 +102,7 @@ Worked example (limit USD 200/month on ground_transport, plus pre-approval thres
 
 ### 5.1 Providers
 
-- `AnthropicProvider` (real): Anthropic Python SDK, structured outputs via `output_config.format` (check the SDK docs; do not guess the API). Model from env `COVERED_MODEL` (default `claude-sonnet-5-5`, decision pending). Policy text goes inside `<policy>` tags and is treated as data. Store `prompt_version` constant.
+- `AnthropicProvider` (real): Anthropic Python SDK, structured outputs via `output_config.format` (check the SDK docs; do not guess the API). Model from env `COVERED_MODEL` (default `claude-haiku-5-5`; see README "Model choice"). Policy text goes inside `<policy>` tags and is treated as data. Store `prompt_version` constant.
 - `MockProvider`: used when `ANTHROPIC_API_KEY` is not set (or `COVERED_PROVIDER=mock`). Returns pre-recorded results from `fixtures/compilations/<sha256 of normalized text>.json` for the sample policies; unknown text → `compile_failed` with a clear "mock mode only supports the sample policies" error. The UI and CLI show which provider is active.
 
 ### 5.2 Failures and backoff
@@ -158,7 +158,7 @@ Errors: JSON `{error: code, message}` with consistent codes (`validation_error`,
 
 - Policies: "Sales" and "Engineering", each with one active version compiled from `fixtures/policies/sales.md` and `fixtures/policies/engineering.md` via the mock fixtures.
 - Employees: Ana, Bruno (Sales), Carla, Diego (Engineering).
-- The sample policies must contain clauses for all five rule types plus these uncompilable cases: "economy class unless the flight is longer than 8 hours" (requires_review, airfare), "client meals require a reasonable business justification" (requires_review or informational — pick and document), "personal expenses are not reimbursable" (informational, *), "prefer partner hotels" (informational, lodging).
+- The sample policies must contain clauses for all five rule types plus these uncompilable cases: "economy class unless the flight is longer than 8 hours" (requires_review, airfare), "client meals require a reasonable business justification" (requires_review or informational — pick and document), "personal expenses are not reimbursable" (informational, *), "prefer partner hotels" (informational, lodging), and "hotel stays up to USD X per night" (requires_review, lodging): a per-unit limit (per night, per person, per km...) is not a per-expense `max_amount`, because one expense can cover several units.
 
 ## 10. Observability
 
