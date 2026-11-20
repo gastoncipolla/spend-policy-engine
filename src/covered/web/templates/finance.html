@@ -8,11 +8,22 @@
 <h1>Finance</h1>
 {% if denied %}
 <div class="alert error" role="alert">{{ denied }}</div>
+{% if actor %}<p><a class="button secondary" href="/employee">Go to My expenses</a></p>{% endif %}
 {% else %}
+<p class="muted lead">Decide on pending expenses across the company, and turn written policies into approved rules.</p>
+
+{% set waiting = pending | rejectattr("expense.employee_id", "equalto", actor.id) | list | length %}
+<h2>Expenses pending approval <span class="count{% if waiting %} attention{% endif %}">{{ pending | length }}</span></h2>
+<p class="muted section-hint">Every pending expense in the company. You cannot decide on your own.</p>
+{% set resolve_base = "/finance" %}
+{% set empty_text = "Nothing pending. Expenses that need approval show up here as soon as they are submitted." %}
+{% include "_pending.html" %}
+
+<h2>Policy review</h2>
 {% if not summary %}
-<p class="empty">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
+<p class="card empty">No policies yet. Run <code>uv run covered seed</code> to load the demo data.</p>
 {% else %}
-<p class="muted lead">Review the rules compiled from each policy next to its text, then activate the version. Highlighted text is cited by a rule (R) or an uncompilable clause (U).</p>
+<p class="muted section-hint">Review the rules compiled from a policy next to its text, then activate the version. Highlighted text is cited by a rule (R) or an uncompilable clause (U).</p>
 <div class="toolbar">
   <form method="get" action="/finance" class="row picker">
     <div>
@@ -26,13 +37,13 @@
   <nav class="versions" aria-label="Versions">
     <span class="muted small">Versions:</span>
     {% for v in summary.versions %}
-      <a class="version{% if detail and v.version == detail.version %} current{% endif %}" href="/finance?policy_id={{ summary.id }}&version={{ v.version }}" {% if detail and v.version == detail.version %}aria-current="page"{% endif %}>v{{ v.version }} <span class="badge {{ v.status }}">{{ v.status }}</span></a>
+      <a class="version{% if detail and v.version == detail.version %} current{% endif %}" href="/finance?policy_id={{ summary.id }}&version={{ v.version }}" {% if detail and v.version == detail.version %}aria-current="page"{% endif %}>v{{ v.version }} <span class="badge {{ v.status }}">{{ v.status | words }}</span></a>
     {% endfor %}
   </nav>
 </div>
 
 {% if detail %}
-<h2>{{ summary.name }} · version {{ detail.version }} <span class="badge {{ detail.status }}">{{ detail.status }}</span></h2>
+<div class="version-head"><h3>{{ summary.name }} · version {{ detail.version }}</h3> <span class="badge {{ detail.status }}">{{ detail.status | words }}</span></div>
 {% if detail.compile_error %}<div class="alert error" role="alert">Compile failed: {{ detail.compile_error }}</div>{% endif %}
 {% if detail.compile_meta %}<p class="muted small">Compiled by {{ detail.compile_meta.provider or "?" }} · model {{ detail.compile_meta.model }} · prompt {{ detail.compile_meta.prompt_version }}{% if detail.compile_meta.cost_usd %} · USD {{ detail.compile_meta.cost_usd }}{% endif %}</p>{% endif %}
 {% if editable %}
@@ -63,9 +74,9 @@
       <div class="rule" id="rule-R{{ rule.id }}">
         <a class="label" href="#clause-R{{ rule.id }}" title="Show this clause in the policy text">R{{ rule.id }}</a>
         <strong>{{ describe_rule(rule.params) }}</strong>
-        <span class="badge {{ rule.status }}">{{ rule.status }}</span>
-        <span class="badge neutral" title="Where this rule came from">{{ rule.origin }}</span>
-        {% for flag in rule.flags %}<span class="badge {{ flag }}">{{ flag }}</span>{% endfor %}
+        <span class="badge {{ rule.status }}">{{ rule.status | words }}</span>
+        <span class="badge neutral" title="Where this rule came from">{{ "LLM" if rule.origin == "llm" else rule.origin | words }}</span>
+        {% for flag in rule.flags %}<span class="badge {{ flag }}">{{ flag | words }}</span>{% endfor %}
         <blockquote class="clause"><mark>“{{ rule.clause }}”</mark></blockquote>
         {% if editable %}
         <div class="actions">
@@ -88,7 +99,7 @@
       <div class="rule">
         <a class="label" href="#clause-U{{ item.id }}" title="Show this clause in the policy text">U{{ item.id }}</a>
         <strong>{{ effect_labels.get(item.effect, item.effect) }}</strong> on {{ categories_text(item.categories) }}
-        <span class="badge {{ item.status }}">{{ item.status }}</span>
+        <span class="badge {{ item.status }}">{{ item.status | words }}</span>
         <blockquote class="clause"><mark>“{{ item.clause }}”</mark></blockquote>
         <div class="source"><strong>Why not a rule:</strong> {{ item.reason }}</div>
         {% if editable %}
@@ -125,18 +136,15 @@
 
 {% endif %}
 
-<h2>Pending expenses <span class="count">{{ pending | length }}</span></h2>
-<p class="muted section-hint">Every pending expense in the company. You cannot resolve your own.</p>
-{% set resolve_base = "/finance" %}
-{% include "_pending.html" %}
 
 {% if summary %}
 <h2>New version of {{ summary.name }}</h2>
+<p class="muted section-hint">Edit the full text to create a draft; compile it, review the rules, then activate it.</p>
 <form method="post" action="/finance/versions" class="card stack">
   <input type="hidden" name="policy_id" value="{{ summary.id }}">
   <label for="policy-text">Full policy text</label>
   <textarea id="policy-text" name="text" required placeholder="Paste the full policy text">{{ detail.text if detail else "" }}</textarea>
-  <div class="actions"><button type="submit" class="secondary">Create draft</button></div>
+  <div class="actions"><button type="submit">Create draft</button></div>
 </form>
 {% endif %}
 {% endif %}

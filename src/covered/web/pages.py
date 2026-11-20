@@ -1,8 +1,9 @@
-"""Server-rendered pages (SPEC §8): `/`, `/employee`, `/finance`.
+"""Server-rendered pages (SPEC §8): `/employee`, `/team`, `/finance`, `/demo`.
 
-Pages call the same services as the API, acting as the user chosen in the
-"act as" selector (SPEC §12a): the cookie holds that user's demo token, the
-same one the API takes as `Authorization: Bearer`. Pages only show what the
+Pages call the same services as the API, acting as the user chosen in the demo
+panel (`/demo`, SPEC §12a "act as"): the cookie holds that user's demo token,
+the same one the API takes as `Authorization: Bearer`. `/` sends you to your
+home, or to the demo panel when nobody is signed in. Pages only show what the
 user may do, but the services enforce it anyway.
 
 Form posts that change state redirect back (post/redirect/get); the employee
@@ -36,6 +37,8 @@ from covered.web.highlight import highlight_clauses
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters["money"] = format_money
+# A stored status code in words, e.g. "compile_failed" -> "Compile failed".
+templates.env.filters["words"] = lambda code: str(code).replace("_", " ").capitalize()
 templates.env.filters["local_time"] = lambda moment: moment.astimezone(
     COMPANY_TZ
 ).strftime("%a %Y-%m-%d %H:%M")
@@ -64,7 +67,40 @@ ROLE_ABILITIES = {  # SPEC §12a permission matrix
 }
 
 TOKEN_COOKIE = "covered_token"
-CHOOSE_USER = "Choose who you are with the “act as” selector first."
+CHOOSE_USER = "Choose who you are in the demo panel first (Demo mode → Choose a user)."
+HOME = "/employee"  # everyone is an employee; role areas are in the top nav
+DEMO = "/demo"  # the demo panel: choose who to sign in as (no login)
+
+
+def _pages_for(actor: Actor) -> list[tuple[str, str]]:
+    """The pages this user may open, as (path, nav label): never a link that 403s."""
+    pages = [(HOME, "My expenses")]
+    if Role.MANAGER in actor.roles:
+        pages.append(("/team", "Team approvals"))
+    if authz.is_finance(actor):
+        pages.append(("/finance", "Finance"))
+    return pages
+
+
+def _team_pending(conn: Conn, actor: Actor) -> list:
+    """Pending expenses of the people who report to this manager."""
+    if Role.MANAGER not in actor.roles:
+        return []
+    team = {
+        e.id for e in employees.list_employees(conn, actor) if e.manager_id == actor.id
+    }
+    pending = expenses.list_expenses(conn, actor, status=ExpenseStatus.PENDING)
+    return [item for item in pending if item.expense.employee_id in team]
+
+
+def _waiting_for(conn: Conn, actor: Actor, path: str) -> int | None:
+    """How many pending expenses this user can decide on that page (nav badge)."""
+    if path == "/team":
+        return len(_team_pending(conn, actor))
+    if path == "/finance":
+        pending = expenses.list_expenses(conn, actor, status=ExpenseStatus.PENDING)
+        return sum(item.expense.employee_id != actor.id for item in pending)
+    return None
 
 
 def install(app: FastAPI) -> None:
@@ -75,6 +111,7 @@ def install(app: FastAPI) -> None:
             endpoint,
             methods=[method],
             response_class=HTMLResponse,
+            response_model=None,  # some pages redirect instead of rendering
             include_in_schema=False,
         )
 
@@ -96,10 +133,17 @@ def _render(
     status_code: int = 200,
     **context,
 ) -> HTMLResponse:
+    users = employees.demo_users(conn)
+    nav = [
+        (path, label, _waiting_for(conn, actor, path))
+        for path, label in (_pages_for(actor) if actor else [])
+    ]
     context.update(
         provider=request.app.state.provider_name,
         actor=actor,
-        users=employees.demo_users(conn),
+        users=users,
+        names={user.id: user.name for user in users},
+        nav=nav,
         here=request.url.path,
     )
     return templates.TemplateResponse(
@@ -112,33 +156,36 @@ def _render(
 
 def act_as(
     conn: Conn,
-    user_id: Annotated[str, Form()],
+    user_id: Annotated[str, Form()] = "",  # empty: sign out
     next_page: Annotated[str, Form(alias="next")] = "/",
 ) -> RedirectResponse:
-    """Store the chosen demo user's token in a cookie; an unknown user clears it."""
-    target = next_page if next_page in ("/", "/employee", "/finance") else "/"
-    response = RedirectResponse(target, status_code=303)
+    """Store the chosen demo user's token in a cookie; an unknown user clears it.
+
+    Stay on the same page when the new user may open it, else go to their home.
+    """
     token = employees.demo_token(conn, user_id)
-    if token:
-        response.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite="lax")
-    else:
+    actor = employees.authenticate(conn, token) if token else None
+    if actor is None:  # sign out
+        response = RedirectResponse(DEMO, status_code=303)
         response.delete_cookie(TOKEN_COOKIE)
+        return response
+    allowed = [path for path, _ in _pages_for(actor)]
+    target = next_page if next_page in allowed else HOME
+    response = RedirectResponse(target, status_code=303)
+    response.set_cookie(TOKEN_COOKIE, token, httponly=True, samesite="lax")
     return response
 
 
-# Home
+# Landing: your home, or the demo panel to choose who you are
 
 
-def home(request: Request, conn: Conn) -> HTMLResponse:
-    actor = _actor(request, conn)
-    return _render(
-        request,
-        conn,
-        actor,
-        "index.html",
-        policies=policies.list_policies(conn, actor) if actor else [],
-        employees=employees.list_employees(conn, actor) if actor else [],
-    )
+def home(request: Request, conn: Conn) -> RedirectResponse:
+    target = DEMO if _actor(request, conn) is None else HOME
+    return RedirectResponse(target, status_code=303)
+
+
+def demo_panel(request: Request, conn: Conn) -> HTMLResponse:
+    return _render(request, conn, _actor(request, conn), "index.html")
 
 
 # Employee
@@ -149,8 +196,11 @@ def employee_page(
     conn: Conn,
     error: str | None = None,
     notice: str | None = None,
-) -> HTMLResponse:
-    return _employee(request, conn, _actor(request, conn), error=error, notice=notice)
+) -> HTMLResponse | RedirectResponse:
+    actor = _actor(request, conn)
+    if actor is None:
+        return RedirectResponse(DEMO, status_code=303)
+    return _employee(request, conn, actor, error=error, notice=notice)
 
 
 def employee_post(
@@ -205,14 +255,14 @@ def employee_resolve(
     expense_id: int,
     resolution: Annotated[ExpenseStatus, Form()],
 ) -> RedirectResponse:
-    """A manager resolves a team member's pending expense."""
+    """A manager resolves a team member's pending expense (back to /team)."""
     message = _try(
         request,
         conn,
         lambda actor: expenses.resolve_expense(conn, actor, expense_id, resolution),
         f"Expense #{expense_id} {resolution}.",
     )
-    return RedirectResponse(f"/employee?{urlencode(message)}", status_code=303)
+    return RedirectResponse(f"/team?{urlencode(message)}", status_code=303)
 
 
 def _employee(
@@ -223,17 +273,14 @@ def _employee(
     form: dict[str, str] | None = None,
     **context,
 ) -> HTMLResponse:
-    history, team_pending = [], []
+    history, policy, team_waiting = [], None, 0
     if actor is not None:
+        team_waiting = len(_team_pending(conn, actor))
         history = expenses.list_expenses(conn, actor, employee_id=actor.id)
-        if Role.MANAGER in actor.roles:
-            team_pending = [
-                item
-                for item in expenses.list_expenses(
-                    conn, actor, status=ExpenseStatus.PENDING
-                )
-                if item.expense.employee_id != actor.id
-            ]
+        policy = next(
+            (p for p in policies.list_policies(conn, actor) if p.id == actor.policy_id),
+            None,
+        )
     now = utc_now().astimezone(COMPANY_TZ).strftime("%Y-%m-%dT%H:%M")
     return _render(
         request,
@@ -241,10 +288,43 @@ def _employee(
         actor,
         "employee.html",
         history=history,
-        team_pending=team_pending,
+        policy=policy,
+        team_waiting=team_waiting,
         form=form or {"occurred_at": now, "category": "meals"},
         idempotency_key=str(uuid.uuid4()),
         **context,
+    )
+
+
+# Team (managers)
+
+
+def team_page(
+    request: Request,
+    conn: Conn,
+    error: str | None = None,
+    notice: str | None = None,
+) -> HTMLResponse | RedirectResponse:
+    actor = _actor(request, conn)
+    if actor is None:
+        return RedirectResponse(DEMO, status_code=303)
+    if Role.MANAGER not in actor.roles:
+        denied = "Team approvals are for managers."
+        return _render(
+            request, conn, actor, "team.html", status_code=403, denied=denied
+        )
+    team = [
+        e for e in employees.list_employees(conn, actor) if e.manager_id == actor.id
+    ]
+    return _render(
+        request,
+        conn,
+        actor,
+        "team.html",
+        team=team,
+        pending=_team_pending(conn, actor),
+        error=error,
+        notice=notice,
     )
 
 
@@ -446,10 +526,12 @@ def _message(exc: Exception) -> str:
 
 ROUTES = [
     ("/", "GET", home),
+    ("/demo", "GET", demo_panel),
     ("/act-as", "POST", act_as),
     ("/employee", "GET", employee_page),
     ("/employee", "POST", employee_post),
     ("/employee/expenses/{expense_id}/resolve", "POST", employee_resolve),
+    ("/team", "GET", team_page),
     ("/finance", "GET", finance_page),
     ("/finance/rules/{rule_id}", "POST", review_rule),
     ("/finance/uncompilable/{item_id}", "POST", classify),
